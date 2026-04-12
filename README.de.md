@@ -13,6 +13,10 @@
 
 > MCP-Server für Schweizer Gerichtsentscheide — Bundesgericht (BGer), Bundesverwaltungsgericht (BVGer), Bundesstrafgericht (BStGer) und alle 26 kantonalen Gerichte via entscheidsuche.ch
 
+<p align="center">
+  <img src="assets/demo.svg" alt="Demo: Claude durchsucht Schweizer Gerichtsentscheide via MCP Tool Call" width="720">
+</p>
+
 ---
 
 ## Übersicht
@@ -152,6 +156,20 @@ swiss-courts-mcp --http --port 8000
 │  Bund + 26 kantonale Gerichte       │
 └─────────────────────────────────────┘
 ```
+
+---
+
+## Sicherheit & Limits
+
+| Aspekt | Details |
+|--------|---------|
+| **Zugriff** | Nur lesend (`readOnlyHint: true`) — der Server kann keine Daten ändern oder löschen |
+| **Personendaten** | Keine Personendaten — alle Entscheide sind öffentliche Gerichtsurteile |
+| **Rate Limits** | Eingebaute Limits (max. 50 Ergebnisse pro Suche, 50 Aggregations-Buckets) |
+| **Timeout** | 30 Sekunden pro API-Aufruf |
+| **Authentifizierung** | Kein API-Key nötig — entscheidsuche.ch ist öffentlich zugänglich |
+| **Lizenzen** | Gerichtsentscheide sind gemäss Schweizer Recht gemeinfrei ([BGG Art. 27](https://www.fedlex.admin.ch/eli/cc/2006/218/de#art_27)) |
+| **Nutzungsbedingungen** | Gemäss [entscheidsuche.ch](https://entscheidsuche.ch) — bitte den Server schonend nutzen |
 
 ---
 

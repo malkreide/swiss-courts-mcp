@@ -13,6 +13,10 @@
 
 [Deutsche Version](README.de.md)
 
+<p align="center">
+  <img src="assets/demo.svg" alt="Demo: Claude searches Swiss court decisions via MCP tool call" width="720">
+</p>
+
 ---
 
 ## Overview
@@ -152,6 +156,20 @@ swiss-courts-mcp --http --port 8000
 │  Federal + 26 cantonal courts       │
 └─────────────────────────────────────┘
 ```
+
+---
+
+## Safety & Limits
+
+| Aspect | Details |
+|--------|---------|
+| **Access** | Read-only (`readOnlyHint: true`) — the server cannot modify or delete any data |
+| **Personal data** | No personal data — all decisions are public court rulings |
+| **Rate limits** | Built-in per-query caps (max 50 results per search, 50 aggregation buckets) |
+| **Timeout** | 30 seconds per API call |
+| **Authentication** | No API keys required — entscheidsuche.ch is publicly accessible |
+| **Licenses** | Court decisions are public domain under Swiss law ([BGG Art. 27](https://www.fedlex.admin.ch/eli/cc/2006/218/de#art_27)) |
+| **Terms of Service** | Subject to [entscheidsuche.ch](https://entscheidsuche.ch) usage terms — please be kind to the server |
 
 ---
 

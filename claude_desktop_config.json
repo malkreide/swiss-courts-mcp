@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "swiss-courts": {
+      "command": "python",
+      "args": ["-m", "swiss_courts_mcp"],
+      "env": {}
+    }
+  }
+}

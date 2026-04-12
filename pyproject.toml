@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name        = "swiss-courts-mcp"
 version     = "0.1.0"
-description = "MCP Server for Swiss court decisions via entscheidsuche.ch — BGer, BVGer, BStGer + 26 cantonal courts"
+description = "MCP Server for Swiss court decisions — Federal Supreme Court, Federal Administrative Court, Federal Criminal Court + 26 cantonal courts via entscheidsuche.ch"
 readme      = "README.md"
 license     = { file = "LICENSE" }
 requires-python = ">=3.11"
-authors     = [{ name = "Schulamt Stadt Zürich" }]
+authors     = [{ name = "Hayal Oezkan" }]
 
 keywords = [
     "mcp", "model-context-protocol", "swiss-open-data",

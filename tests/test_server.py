@@ -6,11 +6,10 @@ from swiss_courts_mcp.server import (
     Canton,
     CourtLevel,
     Language,
-    format_hit,
     format_decision_detail,
+    format_hit,
     result_header,
 )
-
 
 # ---------------------------------------------------------------------------
 # Enum Tests

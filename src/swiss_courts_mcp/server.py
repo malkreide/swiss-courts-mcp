@@ -278,10 +278,10 @@ def format_decision_detail(hit: dict) -> str:
     """Formatiert einen einzelnen Entscheid als detaillierte Markdown-Ansicht."""
     refs = ", ".join(hit["references"]) if hit["references"] else "—"
     lines = [
-        f"## Gerichtsentscheid",
-        f"",
-        f"| Feld | Wert |",
-        f"|------|------|",
+        "## Gerichtsentscheid",
+        "",
+        "| Feld | Wert |",
+        "|------|------|",
         f"| **Gericht** | {hit['court']} |",
         f"| **Kanton** | {hit['canton']} |",
         f"| **Datum** | {hit['date']} |",
@@ -291,9 +291,9 @@ def format_decision_detail(hit: dict) -> str:
         f"| **Volltext** | [Link]({hit['url']}) |",
     ]
     if hit["title"]:
-        lines.extend(["", f"### Titel", f"{hit['title']}"])
+        lines.extend(["", "### Titel", hit["title"]])
     if hit["abstract"]:
-        lines.extend(["", f"### Zusammenfassung", f"{hit['abstract']}"])
+        lines.extend(["", "### Zusammenfassung", hit["abstract"]])
     return "\n".join(lines)
 
 
@@ -573,7 +573,6 @@ async def list_courts(params: ListCourtsInput) -> str:
                     val = filtered[key]
                     if isinstance(val, dict):
                         name = val.get("name", val.get("label", key))
-                        count = len(val) if isinstance(val, dict) else ""
                         lines.append(f"- **{key}**: {name}")
                     elif isinstance(val, str):
                         lines.append(f"- **{key}**: {val}")

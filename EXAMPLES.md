@@ -1,100 +1,67 @@
 # Use Cases & Examples — swiss-courts-mcp
 
-Real-world queries by audience. Alle hier gezeigten Abfragen können direkt ohne API-Key ausgeführt werden.
+Real-world queries by audience. Indicate per example whether an API key is required.
 
 ### 🏫 Bildung & Schule
 Lehrpersonen, Schulbehörden, Fachreferent:innen
 
-#### Fallbeispiele aus dem Schulalltag und Aufsichtspflicht
-«Gibt es aktuelle Bundesgerichtsentscheide zum Thema Schulweg und Haftung der Lehrperson?»
+**Rechtsprechung zum Nachteilsausgleich an Prüfungen**
+«Welche Gerichtsentscheide gibt es im Kanton Zürich zum Thema Nachteilsausgleich bei Prüfungen?»
+→ `search_court_decisions(query="Nachteilsausgleich Prüfung", canton="ZH")`
+Warum nützlich: Erlaubt Schulleitungen und Behörden, ihre Bewilligungspraxis an der aktuellen kantonalen Rechtsprechung auszurichten.
 
-→ `search_court_decisions(query="Schulweg Haftung Lehrperson", court_level="bundesgericht", limit=5)`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Erlaubt Schulleitungen und Lehrpersonen, sich unkompliziert über die aktuelle Rechtslage zur Aufsichtspflicht auf dem Schulweg zu informieren und interne Weisungen rechtssicher zu gestalten.
-
-#### Rechte von Schülerinnen und Schülern
-«Finde Entscheide zur Dispensation vom Schwimmunterricht aus religiösen Gründen.»
-
-→ `search_court_decisions(query="Schwimmunterricht Dispensation Religion", limit=10)`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Hilft Schulbehörden bei der objektiven Beurteilung von heiklen Dispensationsgesuchen auf Basis bestehender kantonaler und eidgenössischer Präjudizien.
+**Entlassung von Lehrpersonen**
+«Gibt es aktuelle Bundesgerichtsentscheide zur fristlosen Kündigung von Lehrpersonen?»
+→ `search_bger_decisions(query="fristlose Kündigung Lehrperson", date_from="2020-01-01")`
+Warum nützlich: Zeigt Schulpflegen und Rechtsdiensten auf, wie das höchste Gericht Personalfragen und arbeitsrechtliche Konflikte im Bildungsbereich beurteilt.
 
 ### 👨‍👩‍👧 Eltern & Schulgemeinde
 Elternräte, interessierte Erziehungsberechtigte
 
-#### Schulweg und Sicherheit
-«Wie entscheiden Gerichte über die Zumutbarkeit des Schulwegs für Primarschüler im Kanton Zürich?»
+**Zumutbarkeit des Schulwegs**
+«Ab welcher Distanz oder bei welchen Gefahren gilt ein Schulweg rechtlich als unzumutbar?»
+→ `search_court_decisions(query="Zumutbarkeit Schulweg")`
+Warum nützlich: Hilft Eltern und Elternräten, objektive rechtliche Massstäbe für Diskussionen um Schulbusse, sichere Schulwege oder Gefahrenstellen zu finden.
 
-→ `search_court_decisions(query="Zumutbarkeit Schulweg Primarschule", canton="ZH")`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Bietet Elternräten konkrete rechtliche Anhaltspunkte und Argumentationshilfen, wenn sie mit der Gemeinde über Schulbusse oder gefährliche Schulwege diskutieren.
-
-#### Fördermassnahmen und Sonderschulung
-«Welche Urteile gibt es bezüglich Kostenübernahme für Sonderschulung oder private Förderung?»
-
-→ `search_court_decisions(query="Sonderschulung Kostenübernahme", limit=10)`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Unterstützt Eltern von Kindern mit besonderen Bedürfnissen dabei, ihre eigenen Rechte gegenüber der Schulgemeinde besser zu verstehen.
+**Sonderpädagogische Massnahmen**
+«Wie entscheiden Gerichte im Kanton Bern bei Streitigkeiten um die Zuteilung von Sonderschulung?»
+→ `search_court_decisions(query="Sonderschulung Zuteilung", canton="BE")`
+Warum nützlich: Bietet Eltern Orientierung, wie Gerichte bei Uneinigkeit über Fördermassnahmen für Kinder mit besonderen Bedürfnissen typischerweise urteilen.
 
 ### 🗳️ Bevölkerung & öffentliches Interesse
 Allgemeine Öffentlichkeit, politisch und gesellschaftlich Interessierte
 
-#### Mietrecht und Kündigung
-«Suche nach aktuellen Entscheiden zum Thema Eigenbedarfskündigung im Mietrecht.»
+**Baueinsprachen und Lärmschutz**
+«Wie haben die Gerichte im Kanton Aargau kürzlich bei Baueinsprachen wegen Lärmschutz entschieden?»
+→ `search_court_decisions(query="Baueinsprache Lärmschutz", canton="AG", date_from="2022-01-01")`
+Warum nützlich: Ermöglicht es Anwohnenden und Bauherrschaften, die Fallstricke und Erfolgsaussichten eigener baurechtlicher Verfahren besser einzuschätzen.
 
-→ `search_court_decisions(query="\"Eigenbedarf\" Kündigung Mietrecht", limit=10)`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Ermöglicht Mieterinnen und Mietern, sich bei Erhalt einer Kündigung ein erstes Bild über die Erfolgschancen einer Anfechtung bei der Schlichtungsbehörde zu machen.
-
-#### Datenschutz und Auskunftsrecht
-«Ich möchte Urteile lesen, die den Artikel 25 des Datenschutzgesetzes (Auskunftsrecht) behandeln.»
-
-→ `search_by_law_reference(law_reference="Art. 25 DSG", limit=10)`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Stärkt die Zivilgesellschaft, indem Bürgerinnen und Bürger konkret nachvollziehen können, wie ihre Datenschutzrechte in der Praxis rechtlich durchgesetzt werden.
-
-#### Neueste Rechtsprechung im eigenen Kanton
-«Zeige mir die neuesten Urteile des Kantonsgerichts Bern.»
-
-→ `get_recent_decisions(canton="BE", limit=5)`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Erlaubt lokal interessierten Bürgern und Journalisten, die aktuelle juristische Entwicklung im eigenen Kanton niederschwellig zu verfolgen.
+**Praxis zum Strassenverkehrsgesetz**
+«Gibt es aktuelle Bundesgerichtsurteile zum Entzug des Führerausweises wegen Geschwindigkeitsüberschreitung?»
+→ `search_by_law_reference(law_reference="Art. 16c SVG")`
+Warum nützlich: Macht die konkrete Anwendung von Strassenverkehrsregeln und die behördliche Massnahmenpraxis im Alltag transparent und nachvollziehbar.
 
 ### 🤖 KI-Interessierte & Entwickler:innen
 MCP-Enthusiast:innen, Forscher:innen, Prompt Engineers, öffentliche Verwaltung
 
-#### Statistik zur Rechtsprechung extrahieren
-«Wie viele Entscheide aus dem Kanton Zürich aus dem Jahr 2023 sind im System erfasst?»
+**Gesetz und Praxis kombinieren (Multi-Server)**
+«Schlage den Artikel zum Auskunftsrecht im Datenschutzgesetz nach und suche dann nach aktueller Rechtsprechung dazu.»
+→ `fedlex_search_laws(query="Auskunftsrecht DSG")` (via [fedlex-mcp](https://github.com/malkreide/fedlex-mcp))
+→ `search_by_law_reference(law_reference="Art. 25 DSG")`
+Warum nützlich: Demonstriert die Stärke von kombinierten MCP-Servern. Zuerst wird der normative Gesetzestext aus dem Bundesrecht geholt, danach die konkrete Fallpraxis dazu.
 
+**Statistische Analyse von Gerichtsentscheiden**
+«Zeige mir die Verteilung der veröffentlichten Gerichtsentscheide im Kanton Zürich für das Jahr 2023.»
 → `get_decision_statistics(canton="ZH", year=2023)`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Ermöglicht Datenjournalisten und Legal-Tech-Entwicklern, den Datenkorpus auf Vollständigkeit zu prüfen und quantitative Analysen zur Gerichtstätigkeit zu generieren.
-
-#### Synergie: Gesetzestext und Rechtsprechung (Multi-Server)
-«Suche das Gleichstellungsgesetz mit fedlex-mcp und finde anschliessend mit swiss-courts-mcp die neuesten Bundesgerichtsentscheide zu Lohndiskriminierung.»
-
-→ `fedlex_search_laws(query="Gleichstellungsgesetz")` *(via [fedlex-mcp](https://github.com/malkreide/fedlex-mcp))*
-→ `search_bger_decisions(query="Lohndiskriminierung Gleichstellungsgesetz", date_from="2020-01-01", limit=10)`
-Auth: Kein API-Key erforderlich.
-
-Warum nützlich: Demonstriert die Leistungsfähigkeit von Agentic Legal Research, indem formelles Recht und materielle gerichtliche Praxis über zwei spezialisierte MCP-Server nahtlos kombiniert werden.
+Warum nützlich: Veranschaulicht Entwicklern und Forschenden, wie aggregierte Metadaten für Trendanalysen, Legal Tech Dashboards oder juristische Forschung genutzt werden können.
 
 ### 🔧 Technische Referenz: Tool-Auswahl nach Anwendungsfall
 
 | Ich möchte… | Tool(s) | Auth nötig? |
 |-------------|---------|-------------|
-| …nach beliebigen Begriffen in Urteilen suchen | `search_court_decisions` | Nein |
-| …gezielt nur Bundesgerichtsentscheide durchsuchen | `search_bger_decisions` | Nein |
-| …die Praxis zu einem bestimmten Gesetzesartikel finden | `search_by_law_reference` | Nein |
-| …die neuesten publizierten Urteile in meinem Kanton sehen | `get_recent_decisions` | Nein |
-| …wissen, wie viele Entscheide ein Kanton erfasst hat | `get_decision_statistics` | Nein |
-| …einen spezifischen Entscheid im Volltext / als Metadaten lesen | `get_court_decision` | Nein |
-| …alle erfassten Gerichte eines Kantons auflisten | `list_courts` | Nein |
+| Urteile zu einem bestimmten Thema finden | `search_court_decisions` | Nein |
+| Gezielt in Bundesgerichtsentscheiden suchen | `search_bger_decisions` | Nein |
+| Rechtsprechung zu einem Gesetzesartikel finden | `search_by_law_reference` | Nein |
+| Die aktuellsten Entscheide aus meinem Kanton sehen | `get_recent_decisions` | Nein |
+| Einen bestimmten Entscheid im Detail lesen | `get_court_decision` | Nein |
+| Analysieren, wie viele Fälle ein Gericht publiziert hat | `get_decision_statistics`, `list_courts` | Nein |

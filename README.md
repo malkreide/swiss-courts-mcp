@@ -133,6 +133,8 @@ swiss-courts-mcp --http --port 8000
 | Latest Federal Supreme Court rulings | `search_bger_decisions("Arbeitsrecht", date_from="2024-01-01")` |
 | Combined: Law text + case law | `fedlex_search_laws("DSG")` then `search_by_law_reference("Art. 25 DSG")` |
 
+[→ More use cases by audience →](EXAMPLES.md)
+
 ---
 
 ## Architecture

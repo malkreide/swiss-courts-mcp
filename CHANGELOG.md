@@ -28,7 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Structured logging (structlog) on stderr. (OBS-003)
 - Context injection with progress reporting in search tools. (SDK-003)
 - Machine-readable `match_type` and source/license provenance in responses.
-  (ARCH-003/CH-004/SDK-002)
+  (ARCH-003/CH-004)
+- All tools now emit `structuredContent` (a consistent response envelope with
+  `source`, `license`, `match_type`, `count`, `total`, `results`/provenance)
+  alongside the curated Markdown, via `CallToolResult` + `structured_output=False`.
+  (SDK-002)
 - `rechtsrecherche` prompt as a second MCP primitive. (ARCH-008)
 - Hardened `Dockerfile` (non-root UID 10001), Dependabot, nightly live-test
   workflow, and `ROADMAP.md` with the explicit read-only Phase 1 declaration.

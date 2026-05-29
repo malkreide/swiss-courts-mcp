@@ -56,3 +56,13 @@ async def test_tool_annotations_read_only():
         assert t.annotations is not None
         assert t.annotations.readOnlyHint is True
         assert t.annotations.openWorldHint is True
+
+
+async def test_tools_have_no_auto_output_schema():
+    # SDK-002: structured_output=False — die Tools liefern eigenes
+    # structuredContent via CallToolResult, kein auto-generiertes Schema.
+    from mcp.server.fastmcp import FastMCP
+    mcp = FastMCP("t")
+    register_tools(mcp)
+    for t in await mcp.list_tools():
+        assert t.outputSchema is None

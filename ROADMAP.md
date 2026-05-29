@@ -12,7 +12,7 @@ Alle Tools sind read-only, idempotent und nicht-destruktiv
 - [x] Einzelabruf, Gerichtsliste, Statistik, neueste Entscheide
 - [x] Pydantic-Input-Validation, Egress-Allow-List, Error-Masking
 - [x] Dual-Transport (stdio + streamable-http) mit Bearer-Auth im HTTP-Modus
-- [ ] Strukturierter Response-Envelope auch als `structuredContent` ausliefern
+- [x] Strukturierter Response-Envelope als `structuredContent` (SDK-002)
 - [ ] Resource-Primitiv für die Gerichts-Taxonomie
 
 ## Phase 2 — Write (geplant, noch nicht freigegeben)

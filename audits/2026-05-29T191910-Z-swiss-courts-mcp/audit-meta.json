@@ -1,0 +1,13 @@
+{
+  "audit_meta": {
+    "server_name": "swiss-courts-mcp",
+    "run_id": "2026-05-29T191910-Z-swiss-courts-mcp",
+    "started_at": "2026-05-29T19:19:10.107838+00:00",
+    "timezone_offset": "Z",
+    "skill_version": "v1.0.0",
+    "output_dir": "audits/2026-05-29T191910-Z-swiss-courts-mcp",
+    "catalog_hash": "091f446b27965044ce658a1d5f4b2cabe2b0ab5661dcc1a53b6be8f1f2e093c0",
+    "catalog_dir": "/tmp/mcp-audit-skill/checks"
+  },
+  "agent_runs": []
+}

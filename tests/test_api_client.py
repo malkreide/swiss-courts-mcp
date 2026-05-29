@@ -262,10 +262,12 @@ class TestExtractTotal:
 class TestHandleError:
     """Tests für handle_error()."""
 
-    def test_generic_error(self):
-        msg = handle_error(ValueError("test"))
-        assert "ValueError" in msg
-        assert "test" in msg
+    def test_generic_error_is_masked(self):
+        # OBS-002: interne Exception-Details dürfen NICHT an den Client leaken.
+        msg = handle_error(ValueError("secret-internal-detail"))
+        assert "secret-internal-detail" not in msg
+        assert "ValueError" not in msg
+        assert "Fehler" in msg
 
     def test_timeout_error(self):
         import httpx

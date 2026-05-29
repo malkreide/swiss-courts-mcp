@@ -1,0 +1,25 @@
+{
+  "name": "swiss-courts-mcp",
+  "repo": "https://github.com/malkreide/swiss-courts-mcp",
+  "transport": "dual",
+  "sdk_language": "Python",
+  "auth_model": "none",
+  "data_class": "Public Open Data",
+  "write_capable": false,
+  "deployment": ["local-stdio"],
+  "is_cloud_deployed": false,
+  "uses_sampling": false,
+  "uses_sequential_thinking": false,
+  "tools_include_filesystem": false,
+  "tools_make_external_requests": true,
+  "stadt_zuerich_context": false,
+  "schulamt_context": false,
+  "volksschule_context": false,
+  "enterprise_context": false,
+  "data_source": {
+    "is_swiss_open_data": true,
+    "name": "entscheidsuche.ch",
+    "description": "Aggregierte Schweizer Gerichtsentscheide (Bund + 26 Kantone)"
+  },
+  "prio": null
+}

@@ -1,0 +1,418 @@
+{
+  "audit_meta": {
+    "server_name": "swiss-courts-mcp",
+    "audit_date": "2026-05-29",
+    "skill_version": "v1.0.0",
+    "catalog_version": "2026-05 (catalog_hash 091f446b…)",
+    "applies_when_dsl_version": "1.0",
+    "policy": "fail-or-partial",
+    "notes": "Re-Audit nach Remediation-PR. Vergleich gegen Lauf 131510."
+  },
+  "results": {
+    "ARCH-001": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "Alle 7 Tools nutzen konsistent snake_case: search_court_decisions, get_court_decision, search_bger_decisions, search_by_law_reference, list_courts, get_recent_decisions, get_decision_statistics (server.py:312-672)",
+        "Keine Spaces/Punkte/Klammern/Sonderzeichen in Tool-Namen",
+        "Docstrings/Descriptions liefern Use-Case-Kontext (z.B. search_by_law_reference server.py:464-475)"
+      ],
+      "gaps": []
+    },
+    "ARCH-002": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "Tool-Docstrings sind durchweg >100 Zeichen und nennen Use-Cases (server.py:323, 374, 407, 465)",
+        "Differenzierung ähnlicher Tools explizit: search_court_decisions vs. search_bger_decisions vs. search_by_law_reference"
+      ],
+      "gaps": [
+        "Kein expliziter <use_case>-Tag; Kontext steckt im Fliesstext statt strukturiert (Stil-Hinweis, low)"
+      ]
+    },
+    "ARCH-003": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "match_type-Feld (exact/none) in Antworten und Empty-Hints (server._match_type)",
+        "Test: test_tools.py prüft 'Treffer-Typ: exact' und 'none'"
+      ],
+      "gaps": []
+    },
+    "ARCH-004": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "high",
+      "evidence": [
+        "Server-Logik ist transport-agnostisch; Dual-Transport stdio + streamable-http über main() wählbar (server.py:760-769)",
+        "Tool-Handler greifen nicht direkt auf request/transport zu",
+        "Identische Tool-Outputs unabhängig vom Transport"
+      ],
+      "gaps": [
+        "Konfiguration über Modul-Konstanten (server.py:30-33) statt Pydantic-Settings (low)",
+        "Kein gemeinsamer Lifespan/Setup (siehe SDK-001)"
+      ]
+    },
+    "ARCH-005": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "critical",
+      "evidence": [
+        "Grep über src/ findet keine API-Keys/Passwörter/Tokens/Connection-Strings",
+        "Server benötigt per Design keine Secrets (kein API-Key, öffentliche Daten — server.py:9, api_client.py:23)"
+      ],
+      "gaps": [
+        "Kein .gitignore im Repo (Risiko künftiger versehentlicher Commits, low/medium)",
+        "Kein Gitleaks/Trufflehog-CI-Gate (Defense-in-Depth-Empfehlung, low)"
+      ]
+    },
+    "ARCH-006": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "high",
+      "evidence": [
+        "7 Tools (<= 12), keine 1:1-REST-Endpoint-Abbildung — high-level Use-Cases (Volltext, BGer, Gesetzesreferenz, Statistik)",
+        "Anchor-Query ('Praxis zu Art. 8 BV') in 1 Tool-Call beantwortbar (search_by_law_reference)"
+      ],
+      "gaps": []
+    },
+    "ARCH-007": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "Tools liefern abgeschlossene Markdown-Resultate inkl. Metadaten + Volltext-Link, keine reinen IDs (server.py:256-297)",
+        "Aggregierende Statistik nutzt ES-Aggregationen serverseitig (server.py:679-748)"
+      ],
+      "gaps": []
+    },
+    "ARCH-008": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "Zweites Primitiv: 'rechtsrecherche'-Prompt (server.register_prompts)",
+        "Test: test_factory.py::test_all_tools_registered prüft Prompt"
+      ],
+      "gaps": []
+    },
+    "ARCH-009": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "high",
+      "evidence": [
+        "ALLE 7 Tools haben explizite Annotations: readOnlyHint/destructiveHint/idempotentHint/openWorldHint (server.py:314-320, 365-371, ...)",
+        "readOnlyHint:true konsistent (Server ist read-only)",
+        "openWorldHint:true korrekt für externe HTTP-Calls"
+      ],
+      "gaps": [
+        "Keine Annotations-Übersicht in README/docs (low)"
+      ]
+    },
+    "ARCH-011": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "7 Tools in server.py mit register_tools-Registry; Abweichung im README begründet (Project Structure note)"
+      ],
+      "gaps": []
+    },
+    "ARCH-012": {
+      "status": "pass",
+      "category": "ARCH",
+      "severity": "medium",
+      "evidence": [
+        "PROTOCOL_VERSION='2025-11-25' gepinnt; Drift-Test test_protocol.py",
+        "README-Sektion 'MCP Protocol Version' + Update-Policy; .github/dependabot.yml"
+      ],
+      "gaps": []
+    },
+    "SDK-001": {
+      "status": "pass",
+      "category": "SDK",
+      "severity": "high",
+      "evidence": [
+        "Gemeinsamer httpx.AsyncClient via FastMCP-Lifespan (server.app_lifespan)",
+        "api_client-Funktionen nehmen client-Parameter; kein Client pro Call",
+        "Test: tests/test_tools.py nutzt gepoolten Client aus Lifespan-Kontext"
+      ],
+      "gaps": []
+    },
+    "SDK-002": {
+      "status": "partial",
+      "category": "SDK",
+      "severity": "medium",
+      "evidence": [
+        "Pydantic v2; SearchResponse-Envelope (models.py) mit source/license/match_type/count/total intern genutzt",
+        "Literal-Types/Enums; count+total+source im Output sichtbar"
+      ],
+      "gaps": [
+        "structuredContent wird noch nicht als separates MCP-Feld emittiert (Markdown bleibt primärer Return) — Roadmap Phase 1"
+      ]
+    },
+    "SDK-003": {
+      "status": "pass",
+      "category": "SDK",
+      "severity": "medium",
+      "evidence": [
+        "ctx: Context in Such-Tools; ctx.report_progress() + ctx.info() (server.py)",
+        "Best-effort Progress-Helfer brechen Tool nie ab"
+      ],
+      "gaps": []
+    },
+    "SDK-004": {
+      "status": "pass",
+      "category": "SDK",
+      "severity": "high",
+      "evidence": [
+        "CORSMiddleware im HTTP-Modus (server._run_http) mit expose_headers/allow_headers=Mcp-Session-Id",
+        "allow_origins explizit aus MCP_CORS_ORIGINS (keine Wildcard); allow_credentials nur bei Auth"
+      ],
+      "gaps": []
+    },
+    "SEC-004": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "Keine SSRF-Angriffsfläche: Ziel-Host ist hartkodiert (SEARCH_URL=https://entscheidsuche.ch/_search.php, api_client.py:23-25), kein User-Input fliesst in die Request-URL",
+        "User-Eingaben (query, signature) gehen ausschliesslich in den Elasticsearch-Body, nicht in die URL (api_client.py:248-261)",
+        "Ausgehendes Schema ist fest HTTPS"
+      ],
+      "gaps": [
+        "Kein expliziter IP-Blocklist/Egress-Proxy als Defense-in-Depth (siehe SEC-021), aber ohne dynamische URL praktisch nicht ausnutzbar"
+      ]
+    },
+    "SEC-005": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "Egress-Allow-List pinnt den einzigen Host (assert_host_allowed); HTTPS erzwungen",
+        "Rebinding-Fläche praktisch null, da keine User-URL; docs/network-egress.md"
+      ],
+      "gaps": [
+        "Echtes IP-Pinning (eine DNS-Resolution + gepinnte IP) bewusst nicht implementiert, da single fixed host (low)"
+      ]
+    },
+    "SEC-006": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "Default-Transport ist stdio: main() ruft mcp.run() ohne Argumente, HTTP nur bei '--http' (server.py:762-769)",
+        "Default-Start öffnet keinen TCP-Port",
+        "README dokumentiert lokalen (Claude Desktop) und Cloud-Use-Case getrennt (README.md:85,100)"
+      ],
+      "gaps": [
+        "Transport-Wahl via sys.argv-Flag statt dedizierter MCP_TRANSPORT-ENV-Var (low)"
+      ]
+    },
+    "SEC-007": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "Dockerfile: non-root USER 10001, PYTHONUNBUFFERED, .dockerignore schliesst Secrets aus",
+        "Secrets zur Laufzeit injiziert, nicht im Layer (SEC-013)"
+      ],
+      "gaps": []
+    },
+    "SEC-008": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "medium",
+      "evidence": [
+        "Keine pre/postinstall-Hooks (reines pyproject/hatchling, keine dynamische Code-Ausführung)",
+        "README zeigt vollständigen, transparenten Installationsbefehl (README.md:55-77)",
+        "PyPI-Publish via OIDC Trusted Publisher (publish.yml: permissions id-token: write, pypa/gh-action-pypi-publish)",
+        "CONTRIBUTING.md erklärt Build-/Test-Prozess"
+      ],
+      "gaps": []
+    },
+    "SEC-009": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "JWTTokenVerifier implementiert SDK-natives TokenVerifier-Protokoll (auth.py)",
+        "User-ID aus validiertem sub-Claim; HS256 + RS256/JWKS",
+        "Token-exp erzwingt TTL; Scope-Prüfung; ADR docs/adr/0001-http-auth.md",
+        "Tests: test_security.py (valid/expired/tampered/wrong-secret/scope)"
+      ],
+      "gaps": []
+    },
+    "SEC-013": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "Datenklasse Public Open Data, kein API-Key/Secret notwendig (api_client.py: nur öffentliche Endpunkte)",
+        "Kein Secret im Code, kein Secret im Container-Layer (kein Dockerfile, keine Secrets)"
+      ],
+      "gaps": [
+        "Für Public Open Data ist Stufe 1 zulässig; eine docs/secret-management.md fehlt (low, da keine Secrets existieren)"
+      ]
+    },
+    "SEC-016": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "Default-Host 127.0.0.1 (config.py Settings.host); 0.0.0.0 nur via MCP_HOST+MCP_ALLOW_PUBLIC_BIND",
+        "Warnung beim 0.0.0.0-Bind ohne Opt-in (server._run_http)",
+        "Dockerfile setzt MCP_HOST=0.0.0.0 zentral, nicht im Code",
+        "Test: tests/test_security.py::test_default_host_is_loopback"
+      ],
+      "gaps": []
+    },
+    "SEC-018": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "Alle Tool-Argumente über Pydantic-Modelle validiert (server.py:107-248)",
+        "Numerische Felder mit ge/le (limit 1..50, year 2000..2030)",
+        "String-Felder mit min_length/max_length und pattern für Datumsfelder (^\\d{4}-\\d{2}-\\d{2}$)",
+        "ConfigDict(extra='forbid', str_strip_whitespace=True) explizit gesetzt"
+      ],
+      "gaps": [
+        "strict=True nicht explizit gesetzt (medium)",
+        "Edge-Case-Tests (zu lange Strings, Out-of-Range) nicht explizit abgedeckt"
+      ]
+    },
+    "SEC-019": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "Server besitzt nur EINE der drei Trifecta-Fähigkeiten: read-only Zugriff auf öffentliche Daten; keine privaten Daten, keine Schreib-/Sende-Fähigkeit",
+        "Alle Tools readOnlyHint:true, keine Mail/Webhook/Write-Tools"
+      ],
+      "gaps": [
+        "Trifecta-Bewertung nicht explizit in README/docs dokumentiert (low)"
+      ]
+    },
+    "SEC-020": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "critical",
+      "evidence": [
+        "Grep über src/: keine os.system, kein subprocess, kein shell=True, kein eval/exec, kein os.popen",
+        "Keine Shell-Aufrufe; ausschliesslich httpx für I/O"
+      ],
+      "gaps": []
+    },
+    "SEC-021": {
+      "status": "pass",
+      "category": "SEC",
+      "severity": "high",
+      "evidence": [
+        "frozenset ALLOWED_HOSTS + assert_host_allowed Pre-Request-Check (api_client.py)",
+        "docs/network-egress.md mit Code- und Network-Layer; Tests test_security.py"
+      ],
+      "gaps": []
+    },
+    "OBS-001": {
+      "status": "pass",
+      "category": "OBS",
+      "severity": "high",
+      "evidence": [
+        "Tool-Handler werfen ToolError -> isError-Result statt Klartext (server.py)",
+        "Tests: test_tools.py success + error path (test_search_upstream_error_raises_masked_toolerror)"
+      ],
+      "gaps": []
+    },
+    "OBS-002": {
+      "status": "pass",
+      "category": "OBS",
+      "severity": "high",
+      "evidence": [
+        "handle_error maskiert Internas; unerwartete Fehler nur ins Server-Log (api_client.py)",
+        "Test: test_api_client.py::test_generic_error_is_masked"
+      ],
+      "gaps": []
+    },
+    "OBS-003": {
+      "status": "pass",
+      "category": "OBS",
+      "severity": "medium",
+      "evidence": [
+        "structlog JSON auf stderr (logging_config.py); >=4 Severity-Stufen",
+        "Bound context pro Tool-Call via log/ctx; structlog in dependencies"
+      ],
+      "gaps": []
+    },
+    "OBS-004": {
+      "status": "pass",
+      "category": "OBS",
+      "severity": "critical",
+      "evidence": [
+        "Keine print()-Statements in src/ (grep bestätigt)",
+        "Keinerlei Schreibzugriff auf stdout im Tool-Code — stdout bleibt für das MCP-Protokoll reserviert"
+      ],
+      "gaps": [
+        "Da gar kein Logging existiert, ist stderr-Konfiguration aktuell N/A; bei Einführung von Logging (OBS-003) muss stderr erzwungen werden"
+      ]
+    },
+    "OPS-001": {
+      "status": "pass",
+      "category": "OPS",
+      "severity": "high",
+      "evidence": [
+        "respx-gemockte Unit-Tests pro Tool-Handler (tests/test_tools.py)",
+        "Live-Tests in separatem nightly Workflow (.github/workflows/live.yml)",
+        "CI läuft -m 'not live'; 84 Unit-Tests grün"
+      ],
+      "gaps": []
+    },
+    "OPS-002": {
+      "status": "pass",
+      "category": "OPS",
+      "severity": "medium",
+      "evidence": [
+        "README.md mit allen Kernsektionen (Installation, Tools, Configuration, Safety & Limits, Architecture, Known Limitations, License) + Example Use Cases als Anchor-Demo (README.md:48-258)",
+        "ASCII-Architekturdiagramm vorhanden (README.md:140-163)",
+        "README.de.md parallel mit gleichen Top-Level-Sektionen",
+        ">=3 Limits genannt (README.md:164-211); CHANGELOG Keep-a-Changelog; CONTRIBUTING.md vorhanden"
+      ],
+      "gaps": [
+        "CONTRIBUTING.md nur Englisch (nicht bilingual) — low"
+      ]
+    },
+    "OPS-003": {
+      "status": "pass",
+      "category": "OPS",
+      "severity": "high",
+      "evidence": [
+        "Phase 1 explizit in README + ROADMAP.md deklariert",
+        "Tool-Annotations (read-only) konsistent mit Phase 1; Übergangs-Gates dokumentiert"
+      ],
+      "gaps": []
+    },
+    "SCALE-002": {
+      "status": "pass",
+      "category": "SCALE",
+      "severity": "high",
+      "evidence": [
+        "stateless_http=true im HTTP-Modus (create_mcp) -> horizontale Skalierung ohne Sticky-Sessions",
+        "Test: test_factory.py::test_http_server_with_auth_builds"
+      ],
+      "gaps": []
+    },
+    "CH-004": {
+      "status": "pass",
+      "category": "CH",
+      "severity": "medium",
+      "evidence": [
+        "Lizenz im Quellen-Footer jeder Antwort (SOURCE_FOOTER) + Provenance pro Datensatz (DecisionResult.provenance, Detail-Ansicht)",
+        "models.py: DATA_LICENSE maschinenlesbar"
+      ],
+      "gaps": []
+    }
+  }
+}

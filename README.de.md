@@ -97,11 +97,54 @@ In `claude_desktop_config.json` eintragen:
 }
 ```
 
-### Cloud-Deployment
+### Cloud-Deployment (HTTP-Transport)
+
+Der HTTP-Transport ist **standardmässig aus**. Der Default-Bind-Host ist
+`127.0.0.1` (nur lokal) — `0.0.0.0` muss bewusst aktiviert werden (das
+Dockerfile tut dies). HTTP ohne Authentifizierung loggt eine Warnung; nur hinter
+einem authentifizierenden Reverse-Proxy betreiben.
 
 ```bash
+# Lokales HTTP (Loopback), ohne Auth — nur Entwicklung
 swiss-courts-mcp --http --port 8000
+
+# Container (bindet 0.0.0.0, Auth aktiv) — siehe Dockerfile
+docker build -t swiss-courts-mcp .
+docker run -p 8000:8000 -e MCP_AUTH_SECRET="$(openssl rand -hex 32)" swiss-courts-mcp
 ```
+
+Relevante Umgebungsvariablen (siehe [`.env.example`](.env.example)):
+
+| Variable | Default | Zweck |
+|---|---|---|
+| `MCP_HOST` | `127.0.0.1` | Bind-Host. Nur in Containern auf `0.0.0.0`. |
+| `MCP_PORT` | `8000` | Bind-Port. |
+| `MCP_ALLOW_PUBLIC_BIND` | `false` | Unterdrückt die `0.0.0.0`-Warnung (Container). |
+| `MCP_STATELESS_HTTP` | `true` | Stateless HTTP → horizontale Skalierung ohne Sticky-Sessions. |
+| `MCP_AUTH_ENABLED` | `false` | Aktiviert Bearer-Token-Auth für HTTP. |
+| `MCP_AUTH_SECRET` | — | HS256-Signing-Key (Entwicklung). |
+| `MCP_OAUTH_JWKS_URL` | — | JWKS-URL für RS256-Validierung (Produktion). |
+| `MCP_REQUIRED_SCOPES` | — | Komma-separierte erforderliche Scopes. |
+| `MCP_CORS_ORIGINS` | — | Komma-separierte erlaubte Origins (keine Wildcard in Prod). |
+
+Die User-Identität stammt aus dem validierten JWT-`sub`-Claim; siehe
+[ADR 0001](docs/adr/0001-http-auth.md).
+
+---
+
+## MCP-Protocol-Version
+
+Der Server pinnt die MCP-Protocol-Version **`2025-11-25`** (Konstante
+`PROTOCOL_VERSION` in `server.py`). Ein Regressionstest erkennt Drift gegen die
+installierte SDK-Version, sodass ein Protocol-Bump eine bewusste Änderung ist
+(Wert + CHANGELOG + diese Sektion). SDK-Updates kommen monatlich via Dependabot.
+
+## Projekt-Phase
+
+**Phase 1 — read-only** (siehe [ROADMAP.md](ROADMAP.md)). Alle Tools sind
+`readOnlyHint: true`; keine schreibenden oder destruktiven Operationen. Der
+Übergang zu Phase 2 erfordert einen sauberen Re-Audit und die in der Roadmap
+genannten Gates.
 
 ---
 
@@ -123,6 +166,21 @@ swiss-courts-mcp --http --port 8000
 | `list_courts` | Alle indexierten Gerichte auflisten, optional nach Kanton |
 | `get_recent_decisions` | Neueste Entscheide, filterbar nach Kanton und Ebene |
 | `get_decision_statistics` | Statistiken nach Kanton und Jahr |
+
+### Tool-Annotations
+
+Alle sieben Tools teilen dieselben Hints — read-only, idempotent,
+nicht-destruktiv, externes System:
+
+| Annotation | Wert |
+|---|---|
+| `readOnlyHint` | `true` |
+| `destructiveHint` | `false` |
+| `idempotentHint` | `true` |
+| `openWorldHint` | `true` |
+
+Zusätzlich gibt es einen `rechtsrecherche`-**Prompt** (zweites MCP-Primitiv
+neben den Tools).
 
 ### Anwendungsbeispiele
 
@@ -169,7 +227,11 @@ swiss-courts-mcp --http --port 8000
 | **Personendaten** | Keine Personendaten — alle Entscheide sind öffentliche Gerichtsurteile |
 | **Rate Limits** | Eingebaute Limits (max. 50 Ergebnisse pro Suche, 50 Aggregations-Buckets) |
 | **Timeout** | 30 Sekunden pro API-Aufruf |
-| **Authentifizierung** | Kein API-Key nötig — entscheidsuche.ch ist öffentlich zugänglich |
+| **Datenquellen-Auth** | Kein API-Key nötig — entscheidsuche.ch ist öffentlich zugänglich |
+| **HTTP-Transport-Auth** | Optionale Bearer-Token-Auth (JWT, `sub`-Claim-Identität); siehe [ADR 0001](docs/adr/0001-http-auth.md) |
+| **Egress** | Code-Layer-Allow-List (nur `entscheidsuche.ch`, HTTPS erzwungen); siehe [Egress-Policy](docs/network-egress.md) |
+| **Error-Masking** | Interne Exceptions nur serverseitig geloggt; Clients erhalten freundliche Meldungen |
+| **Secrets** | Keine Secrets im Code/Log; `.env` git-ignoriert, Gitleaks auf PRs; siehe [Secret-Management](docs/secret-management.md) |
 | **Lizenzen** | Gerichtsentscheide sind gemäss Schweizer Recht gemeinfrei ([BGG Art. 27](https://www.fedlex.admin.ch/eli/cc/2006/218/de#art_27)) |
 | **Nutzungsbedingungen** | Gemäss [entscheidsuche.ch](https://entscheidsuche.ch) — bitte den Server schonend nutzen |
 
@@ -186,11 +248,15 @@ swiss-courts-mcp --http --port 8000
 
 ## Tests
 
+Unit-Tests mocken HTTP mit `respx`; Live-Tests laufen in einem separaten
+nächtlichen Workflow ([`live.yml`](.github/workflows/live.yml)) und blockieren
+PRs nie.
+
 ```bash
-# Unit-Tests
+# Unit-Tests (HTTP gemockt) — das läuft in der CI
 pytest tests/ -v -m "not live"
 
-# Live-API-Tests
+# Live-API-Tests (echtes entscheidsuche.ch)
 pytest tests/ -v -m live
 
 # Linting

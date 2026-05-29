@@ -10,18 +10,36 @@ Lizenz: Freie Nutzung (kein API-Key nötig)
 
 Synergie mit fedlex-mcp: Gesetze (SR) + Rechtsprechung = vollständige Rechtsrecherche.
 
-Transport: Dual — stdio (lokal) und streamable-http (Cloud)
+Transport: Dual — stdio (lokal, ohne Auth) und streamable-http (Cloud, mit Auth).
+MCP-Protokoll: siehe `PROTOCOL_VERSION` (von der FastMCP-SDK-Version bestimmt).
+Phase: 1 (read-only) — siehe ROADMAP.md.
 """
 
 from __future__ import annotations
 
+import os
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from enum import StrEnum
 
-from mcp.server.fastmcp import FastMCP
+import httpx
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import BaseModel, ConfigDict, Field
 
 from swiss_courts_mcp import api_client
+from swiss_courts_mcp.config import Settings
+from swiss_courts_mcp.logging_config import configure_logging, get_logger
+from swiss_courts_mcp.models import (
+    DATA_LICENSE,
+    DATA_SOURCE,
+    DATA_SOURCE_URL,
+    DecisionResult,
+    SearchResponse,
+)
+
+log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Konstanten
@@ -30,7 +48,16 @@ from swiss_courts_mcp import api_client
 MAX_RESULTS_DEFAULT = 20
 MAX_RESULTS_LIMIT = 50
 
-SOURCE_FOOTER = "\n---\n*Quelle: entscheidsuche.ch — Schweizer Gerichtsentscheide*"
+# Bewusst gepinnte, getestete MCP-Protocol-Version (ARCH-012). Kein "latest":
+# ein SDK-Bump muss bewusst nachgezogen werden (Wert + CHANGELOG + README).
+# tests/test_protocol.py erkennt Drift gegen die installierte SDK-Version.
+PROTOCOL_VERSION = "2025-11-25"
+
+# Maschinen-/menschenlesbarer Quellen- + Lizenz-Footer (CH-004).
+SOURCE_FOOTER = (
+    f"\n---\n*Quelle: {DATA_SOURCE} ({DATA_SOURCE_URL}) · "
+    f"Lizenz: {DATA_LICENSE}*"
+)
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -80,23 +107,6 @@ class Language(StrEnum):
     DE = "de"
     FR = "fr"
     IT = "it"
-
-
-# ---------------------------------------------------------------------------
-# Server
-# ---------------------------------------------------------------------------
-
-mcp = FastMCP(
-    "swiss_courts_mcp",
-    instructions=(
-        "MCP-Server für Schweizer Gerichtsentscheide via entscheidsuche.ch. "
-        "Zugriff auf Urteile des Bundesgerichts (BGer), Bundesverwaltungsgerichts (BVGer), "
-        "Bundesstrafgerichts (BStGer) und kantonaler Gerichte aller 26 Kantone. "
-        "Ideal in Kombination mit fedlex-mcp für vollständige Rechtsrecherche "
-        "(Gesetzestext + Rechtsprechung). "
-        "Alle Daten stammen von entscheidsuche.ch (öffentlich, kein API-Key nötig)."
-    ),
-)
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +192,7 @@ class SearchBGerInput(BaseModel):
             "'I. öffentlich-rechtliche Abteilung', 'II. zivilrechtliche Abteilung'. "
             "Leer = alle Abteilungen."
         ),
+        max_length=200,
     )
     date_from: str | None = Field(
         default=None,
@@ -249,6 +260,44 @@ class DecisionStatsInput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Context-Helfer (SDK-003)
+# ---------------------------------------------------------------------------
+
+
+def _client(ctx: Context | None) -> httpx.AsyncClient | None:
+    """Holt den gepoolten httpx-Client aus dem Lifespan-Kontext (SDK-001)."""
+    try:
+        return ctx.request_context.lifespan_context.get("client")  # type: ignore[union-attr]
+    except Exception:
+        return None
+
+
+async def _progress(ctx: Context | None, current: float, total: float) -> None:
+    """Best-effort Progress-Report; bricht den Tool-Call nie ab."""
+    if ctx is None:
+        return
+    try:
+        await ctx.report_progress(progress=current, total=total)
+    except Exception:
+        pass
+
+
+async def _info(ctx: Context | None, message: str, **kw) -> None:
+    if ctx is None:
+        return
+    try:
+        await ctx.info(message)
+    except Exception:
+        pass
+    log.info(message, **kw)
+
+
+def _match_type(total: int) -> str:
+    """ARCH-003: maschinenlesbarer Treffer-Typ."""
+    return "exact" if total > 0 else "none"
+
+
+# ---------------------------------------------------------------------------
 # Formatierung
 # ---------------------------------------------------------------------------
 
@@ -289,6 +338,7 @@ def format_decision_detail(hit: dict) -> str:
         f"| **Signatur** | `{hit['signature']}` |",
         f"| **Sprache** | {hit['language']} |",
         f"| **Volltext** | [Link]({hit['url']}) |",
+        f"| **Quelle / Lizenz** | {DATA_SOURCE} — {DATA_LICENSE} |",
     ]
     if hit["title"]:
         lines.extend(["", "### Titel", hit["title"]])
@@ -297,34 +347,39 @@ def format_decision_detail(hit: dict) -> str:
     return "\n".join(lines)
 
 
-def result_header(count: int, total: int, desc: str) -> str:
-    """Standardisierter Ergebnisheader."""
+def result_header(count: int, total: int, desc: str, match_type: str | None = None) -> str:
+    """Standardisierter Ergebnisheader (inkl. optionalem Treffer-Typ, ARCH-003)."""
+    mt = f"\n**Treffer-Typ:** {match_type}" if match_type else ""
     if total > count:
-        return f"## {desc}\n**Treffer:** {count} von {total} angezeigt\n"
-    return f"## {desc}\n**Treffer:** {total}\n"
+        return f"## {desc}\n**Treffer:** {count} von {total} angezeigt{mt}\n"
+    return f"## {desc}\n**Treffer:** {total}{mt}\n"
+
+
+def _build_response(query: str, total: int, hits: list[dict]) -> SearchResponse:
+    """Baut den strukturierten Such-Envelope (SDK-002)."""
+    return SearchResponse(
+        query=query,
+        match_type=_match_type(total),  # type: ignore[arg-type]
+        count=len(hits),
+        total=total,
+        results=[DecisionResult(**h) for h in hits],
+    )
 
 
 # ---------------------------------------------------------------------------
-# Tool 1: Volltextsuche
+# Tool-Implementierungen (registriert via register_tools)
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(
-    name="search_court_decisions",
-    annotations={
-        "title": "Gerichtsentscheide suchen",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True,
-    },
-)
-async def search_court_decisions(params: SearchDecisionsInput) -> str:
+async def search_court_decisions(params: SearchDecisionsInput, ctx: Context) -> str:
     """Volltextsuche in Schweizer Gerichtsentscheiden.
 
-    Durchsucht Urteile aller Schweizer Gerichte (Bund + Kantone) via entscheidsuche.ch.
-    Unterstützt Filter nach Kanton, Gerichtsebene, Datumsbereich.
+    Use-Case: juristische Recherche über alle Schweizer Gerichte (Bund + Kantone)
+    via entscheidsuche.ch. Unterstützt Filter nach Kanton, Gerichtsebene und
+    Datumsbereich. Liefert abgeschlossene Treffer inkl. Titel, Abstract und
+    Volltext-Link sowie einen maschinenlesbaren Treffer-Typ (exact/none).
     """
+    await _progress(ctx, 0, 1)
     try:
         body = api_client.build_search_body(
             query=params.query,
@@ -334,86 +389,64 @@ async def search_court_decisions(params: SearchDecisionsInput) -> str:
             date_to=params.date_to,
             size=params.limit,
         )
-        result = await api_client.search_decisions(body)
+        result = await api_client.search_decisions(body, client=_client(ctx))
         total = api_client.extract_total(result)
+        await _progress(ctx, 1, 1)
 
         if total == 0:
-            return f"Keine Entscheide gefunden für: **{params.query}**\n\nTipps:\n- Andere Suchbegriffe versuchen\n- Filter entfernen (Kanton, Datum)" + SOURCE_FOOTER
+            await _info(ctx, "search_empty", tool="search_court_decisions")
+            return (
+                f"Keine Entscheide gefunden für: **{params.query}** "
+                "(Treffer-Typ: none)\n\nTipps:\n"
+                "- Andere Suchbegriffe versuchen\n- Filter entfernen (Kanton, Datum)"
+            ) + SOURCE_FOOTER
 
         hits = [
             api_client.extract_hit(h, params.language.value)
             for h in result.get("hits", {}).get("hits", [])
         ]
-
-        parts = [result_header(len(hits), total, f"Gerichtsentscheide: «{params.query}»")]
+        envelope = _build_response(params.query, total, hits)
+        parts = [result_header(
+            envelope.count, total, f"Gerichtsentscheide: «{params.query}»",
+            match_type=envelope.match_type,
+        )]
         for i, hit in enumerate(hits, 1):
             parts.append(format_hit(hit, i))
-
         return "\n\n".join(parts) + SOURCE_FOOTER
 
-    except Exception as e:
-        return api_client.handle_error(e)
+    except Exception as e:  # noqa: BLE001 — wird maskiert + als isError gemeldet
+        raise ToolError(api_client.handle_error(e)) from None
 
 
-# ---------------------------------------------------------------------------
-# Tool 2: Einzelnes Urteil
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool(
-    name="get_court_decision",
-    annotations={
-        "title": "Gerichtsentscheid abrufen",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True,
-    },
-)
-async def get_court_decision(params: GetDecisionInput) -> str:
+async def get_court_decision(params: GetDecisionInput, ctx: Context) -> str:
     """Ruft einen einzelnen Gerichtsentscheid anhand seiner Signatur ab.
 
-    Die Signatur wird von search_court_decisions zurückgegeben.
-    Liefert vollständige Metadaten inkl. Titel, Abstract, Gericht und Link zum Volltext.
+    Use-Case: Detail-Ansicht eines konkreten Urteils (Signatur aus
+    search_court_decisions). Exakter Lookup ohne Fuzzy-Fallback.
     """
     try:
-        hit_raw = await api_client.get_decision_by_id(params.signature)
+        hit_raw = await api_client.get_decision_by_id(params.signature, client=_client(ctx))
         if not hit_raw:
-            return f"Entscheid nicht gefunden: `{params.signature}`\n\nBitte Signatur prüfen."
+            return (
+                f"Entscheid nicht gefunden: `{params.signature}` (Treffer-Typ: none)\n\n"
+                "Bitte Signatur prüfen."
+            ) + SOURCE_FOOTER
 
         hit = api_client.extract_hit(hit_raw, params.language.value)
         return format_decision_detail(hit) + SOURCE_FOOTER
 
-    except Exception as e:
-        return api_client.handle_error(e)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(e)) from None
 
 
-# ---------------------------------------------------------------------------
-# Tool 3: BGer-Spezialsuche
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool(
-    name="search_bger_decisions",
-    annotations={
-        "title": "Bundesgerichtsentscheide suchen",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True,
-    },
-)
-async def search_bger_decisions(params: SearchBGerInput) -> str:
+async def search_bger_decisions(params: SearchBGerInput, ctx: Context) -> str:
     """Sucht gezielt in Bundesgerichtsentscheiden (BGer/BGE).
 
-    Optionaler Filter nach Abteilung (z.B. 'I. öffentlich-rechtliche Abteilung').
-    Das Bundesgericht ist die höchste richterliche Instanz der Schweiz.
+    Use-Case: höchstrichterliche Rechtsprechung mit optionalem Abteilungsfilter.
     """
+    await _progress(ctx, 0, 1)
     try:
-        # BGer + BGE Prefixes
         prefixes = ["CH_BGer", "CH_BGE"]
-
-        # Bei Abteilungsfilter den Suchbegriff erweitern
         query = params.query
         if params.chamber:
             query = f"{query} \"{params.chamber}\""
@@ -425,54 +458,41 @@ async def search_bger_decisions(params: SearchBGerInput) -> str:
             date_to=params.date_to,
             size=params.limit,
         )
-        result = await api_client.search_decisions(body)
+        result = await api_client.search_decisions(body, client=_client(ctx))
         total = api_client.extract_total(result)
+        await _progress(ctx, 1, 1)
 
         if total == 0:
-            return f"Keine Bundesgerichtsentscheide gefunden für: **{params.query}**" + SOURCE_FOOTER
+            return (
+                f"Keine Bundesgerichtsentscheide gefunden für: **{params.query}** "
+                "(Treffer-Typ: none)"
+            ) + SOURCE_FOOTER
 
         hits = [
             api_client.extract_hit(h, params.language.value)
             for h in result.get("hits", {}).get("hits", [])
         ]
-
-        parts = [result_header(len(hits), total, f"Bundesgericht: «{params.query}»")]
+        parts = [result_header(
+            len(hits), total, f"Bundesgericht: «{params.query}»",
+            match_type=_match_type(total),
+        )]
         for i, hit in enumerate(hits, 1):
             parts.append(format_hit(hit, i))
-
         return "\n\n".join(parts) + SOURCE_FOOTER
 
-    except Exception as e:
-        return api_client.handle_error(e)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(e)) from None
 
 
-# ---------------------------------------------------------------------------
-# Tool 4: Suche nach Gesetzesartikel
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool(
-    name="search_by_law_reference",
-    annotations={
-        "title": "Entscheide zu Gesetzesartikel suchen",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True,
-    },
-)
-async def search_by_law_reference(params: SearchByLawInput) -> str:
+async def search_by_law_reference(params: SearchByLawInput, ctx: Context) -> str:
     """Sucht Gerichtsentscheide die einen bestimmten Gesetzesartikel zitieren.
 
-    Mehrstufige Suche: exakte Phrase (höchste Relevanz) + Artikelnummer/Kürzel
-    (breitere Abdeckung). Findet auch Varianten wie 'Artikel 8 BV', 'art. 8 Cst.'
-
-    Synergie mit fedlex-mcp: Zuerst Gesetz nachschlagen (fedlex_search_laws),
-    dann Praxis dazu finden (search_by_law_reference).
-
-    Beispiele: 'Art. 8 BV' (Rechtsgleichheit), 'Art. 328 OR' (Persönlichkeitsschutz),
-    'Art. 25 DSG' (Auskunftsrecht).
+    Use-Case: Praxis zu einer Norm finden. Mehrstufige Suche: exakte Phrase
+    (höchste Relevanz) + Artikelnummer/Kürzel (breitere Abdeckung). Synergie mit
+    fedlex-mcp: zuerst Gesetz nachschlagen, dann Praxis dazu finden.
+    Beispiele: 'Art. 8 BV', 'Art. 328 OR', 'Art. 25 DSG'.
     """
+    await _progress(ctx, 0, 1)
     try:
         body = api_client.build_law_reference_body(
             law_reference=params.law_reference,
@@ -480,65 +500,48 @@ async def search_by_law_reference(params: SearchByLawInput) -> str:
             date_to=params.date_to,
             size=params.limit,
         )
-        result = await api_client.search_decisions(body)
+        result = await api_client.search_decisions(body, client=_client(ctx))
         total = api_client.extract_total(result)
+        await _progress(ctx, 1, 1)
 
         if total == 0:
             return (
-                f"Keine Entscheide gefunden zu: **{params.law_reference}**\n\n"
-                f"Tipps:\n"
-                f"- Schreibweise prüfen (z.B. 'Art. 8 BV' statt 'Art.8BV')\n"
-                f"- Andere Formulierung versuchen (z.B. '8 BV' statt 'Art. 8 BV')\n"
-                f"- Mit fedlex-mcp die korrekte Gesetzesbezeichnung nachschlagen"
+                f"Keine Entscheide gefunden zu: **{params.law_reference}** "
+                "(Treffer-Typ: none)\n\n"
+                "Tipps:\n"
+                "- Schreibweise prüfen (z.B. 'Art. 8 BV' statt 'Art.8BV')\n"
+                "- Andere Formulierung versuchen (z.B. '8 BV' statt 'Art. 8 BV')\n"
+                "- Mit fedlex-mcp die korrekte Gesetzesbezeichnung nachschlagen"
             ) + SOURCE_FOOTER
 
         hits = [
             api_client.extract_hit(h, params.language.value)
             for h in result.get("hits", {}).get("hits", [])
         ]
-
         parts = [result_header(
-            len(hits), total,
-            f"Rechtsprechung zu {params.law_reference}"
+            len(hits), total, f"Rechtsprechung zu {params.law_reference}",
+            match_type=_match_type(total),
         )]
         for i, hit in enumerate(hits, 1):
             parts.append(format_hit(hit, i))
-
         return "\n\n".join(parts) + SOURCE_FOOTER
 
-    except Exception as e:
-        return api_client.handle_error(e)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(e)) from None
 
 
-# ---------------------------------------------------------------------------
-# Tool 5: Gerichte auflisten
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool(
-    name="list_courts",
-    annotations={
-        "title": "Verfügbare Gerichte auflisten",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True,
-    },
-)
-async def list_courts(params: ListCourtsInput) -> str:
+async def list_courts(params: ListCourtsInput, ctx: Context) -> str:
     """Listet alle in entscheidsuche.ch indexierten Gerichte auf.
 
-    Zeigt Bundesgerichte und kantonale Gerichte hierarchisch.
-    Optional nach Kanton filterbar.
+    Use-Case: Überblick über verfügbare Bundes- und Kantonsgerichte,
+    optional nach Kanton gefiltert.
     """
     try:
-        taxonomy = await api_client.get_court_taxonomy()
+        taxonomy = await api_client.get_court_taxonomy(client=_client(ctx))
 
         lines = ["## Verfügbare Gerichte\n"]
 
         if isinstance(taxonomy, dict):
-            # Facetten_alle.json hat verschiedene mögliche Strukturen
-            # Wir verarbeiten sie pragmatisch
             filtered = {}
             for key, value in taxonomy.items():
                 if params.canton:
@@ -550,7 +553,6 @@ async def list_courts(params: ListCourtsInput) -> str:
             if not filtered:
                 return f"Keine Gerichte gefunden für Kanton: {params.canton}" + SOURCE_FOOTER
 
-            # Bundesgerichte zuerst
             federal_keys = [k for k in filtered if k.startswith("CH")]
             cantonal_keys = sorted([k for k in filtered if not k.startswith("CH")])
 
@@ -590,30 +592,15 @@ async def list_courts(params: ListCourtsInput) -> str:
 
         return "\n".join(lines) + SOURCE_FOOTER
 
-    except Exception as e:
-        return api_client.handle_error(e)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(e)) from None
 
 
-# ---------------------------------------------------------------------------
-# Tool 6: Neueste Entscheide
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool(
-    name="get_recent_decisions",
-    annotations={
-        "title": "Neueste Gerichtsentscheide",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True,
-    },
-)
-async def get_recent_decisions(params: RecentDecisionsInput) -> str:
+async def get_recent_decisions(params: RecentDecisionsInput, ctx: Context) -> str:
     """Gibt die neuesten Gerichtsentscheide zurück.
 
-    Chronologisch sortiert (neueste zuerst). Filterbar nach Kanton und Gerichtsebene.
-    Nützlich um aktuelle Rechtsprechungsentwicklungen zu verfolgen.
+    Use-Case: aktuelle Rechtsprechungsentwicklungen verfolgen. Chronologisch
+    sortiert, filterbar nach Kanton und Gerichtsebene.
     """
     try:
         body = api_client.build_search_body(
@@ -621,11 +608,11 @@ async def get_recent_decisions(params: RecentDecisionsInput) -> str:
             court_level=params.court_level.value if params.court_level else None,
             size=params.limit,
         )
-        result = await api_client.search_decisions(body)
+        result = await api_client.search_decisions(body, client=_client(ctx))
         total = api_client.extract_total(result)
 
         if total == 0:
-            return "Keine aktuellen Entscheide gefunden." + SOURCE_FOOTER
+            return "Keine aktuellen Entscheide gefunden. (Treffer-Typ: none)" + SOURCE_FOOTER
 
         hits = [
             api_client.extract_hit(h, params.language.value)
@@ -644,44 +631,25 @@ async def get_recent_decisions(params: RecentDecisionsInput) -> str:
             }
             desc += f" — {level_names.get(params.court_level.value, params.court_level.value)}"
 
-        parts = [result_header(len(hits), total, desc)]
+        parts = [result_header(len(hits), total, desc, match_type=_match_type(total))]
         for i, hit in enumerate(hits, 1):
             parts.append(format_hit(hit, i))
-
         return "\n\n".join(parts) + SOURCE_FOOTER
 
-    except Exception as e:
-        return api_client.handle_error(e)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(e)) from None
 
 
-# ---------------------------------------------------------------------------
-# Tool 7: Statistiken
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool(
-    name="get_decision_statistics",
-    annotations={
-        "title": "Entscheid-Statistiken",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True,
-    },
-)
-async def get_decision_statistics(params: DecisionStatsInput) -> str:
+async def get_decision_statistics(params: DecisionStatsInput, ctx: Context) -> str:
     """Gibt Statistiken über die Anzahl indexierter Gerichtsentscheide zurück.
 
-    Zeigt Gesamtzahl und Verteilung. Optional filterbar nach Kanton oder Jahr.
+    Use-Case: Mengengerüst und Verteilung nach Kanton/Jahr.
     """
     try:
-        # Aggregations-Query für Statistiken
         body: dict = {
-            "size": 0,  # Keine Dokumente, nur Aggregationen
+            "size": 0,
             "aggs": {
-                "by_canton": {
-                    "terms": {"field": "hierarchy.keyword", "size": 50}
-                },
+                "by_canton": {"terms": {"field": "hierarchy.keyword", "size": 50}},
                 "by_year": {
                     "date_histogram": {
                         "field": "date",
@@ -698,58 +666,151 @@ async def get_decision_statistics(params: DecisionStatsInput) -> str:
             filter_clauses.append({"term": {"hierarchy.keyword": params.canton.value}})
         if params.year:
             filter_clauses.append({
-                "range": {
-                    "date": {
-                        "gte": f"{params.year}-01-01",
-                        "lte": f"{params.year}-12-31",
-                    }
-                }
+                "range": {"date": {"gte": f"{params.year}-01-01", "lte": f"{params.year}-12-31"}}
             })
 
-        if filter_clauses:
-            body["query"] = {"bool": {"filter": filter_clauses}}
-        else:
-            body["query"] = {"match_all": {}}
+        body["query"] = {"bool": {"filter": filter_clauses}} if filter_clauses else {"match_all": {}}
 
-        result = await api_client.search_decisions(body)
+        result = await api_client.search_decisions(body, client=_client(ctx))
         total = api_client.extract_total(result)
 
-        lines = ["## Entscheid-Statistiken\n"]
-        lines.append(f"**Gesamtzahl:** {total:,} Entscheide")
-
+        lines = ["## Entscheid-Statistiken\n", f"**Gesamtzahl:** {total:,} Entscheide"]
         if params.canton:
             lines.append(f"**Filter:** Kanton {params.canton.value}")
         if params.year:
             lines.append(f"**Filter:** Jahr {params.year}")
 
-        # Aggregationen auswerten
         aggs = result.get("aggregations", {})
-
         canton_buckets = aggs.get("by_canton", {}).get("buckets", [])
         if canton_buckets:
-            lines.extend(["", "### Nach Kanton/Gericht", ""])
-            lines.append("| Kanton/Gericht | Anzahl |")
-            lines.append("|----------------|--------|")
+            lines.extend(["", "### Nach Kanton/Gericht", "", "| Kanton/Gericht | Anzahl |",
+                          "|----------------|--------|"])
             for bucket in canton_buckets[:20]:
-                key = bucket.get("key", "")
-                count = bucket.get("doc_count", 0)
-                lines.append(f"| {key} | {count:,} |")
+                lines.append(f"| {bucket.get('key', '')} | {bucket.get('doc_count', 0):,} |")
 
         year_buckets = aggs.get("by_year", {}).get("buckets", [])
         if year_buckets:
-            lines.extend(["", "### Nach Jahr", ""])
-            lines.append("| Jahr | Anzahl |")
-            lines.append("|------|--------|")
+            lines.extend(["", "### Nach Jahr", "", "| Jahr | Anzahl |", "|------|--------|"])
             for bucket in year_buckets[:10]:
                 key_str = bucket.get("key_as_string", "")
                 year_val = key_str[:4] if key_str else str(bucket.get("key", ""))
-                count = bucket.get("doc_count", 0)
-                lines.append(f"| {year_val} | {count:,} |")
+                lines.append(f"| {year_val} | {bucket.get('doc_count', 0):,} |")
 
         return "\n".join(lines) + SOURCE_FOOTER
 
-    except Exception as e:
-        return api_client.handle_error(e)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(e)) from None
+
+
+# Annotations-Übersicht (ARCH-009) — alle Tools sind read-only, idempotent,
+# nicht-destruktiv und erreichen ein externes System (openWorld).
+_READ_ONLY = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": True,
+}
+
+_TOOLS = [
+    (search_court_decisions, "search_court_decisions", "Gerichtsentscheide suchen"),
+    (get_court_decision, "get_court_decision", "Gerichtsentscheid abrufen"),
+    (search_bger_decisions, "search_bger_decisions", "Bundesgerichtsentscheide suchen"),
+    (search_by_law_reference, "search_by_law_reference", "Entscheide zu Gesetzesartikel suchen"),
+    (list_courts, "list_courts", "Verfügbare Gerichte auflisten"),
+    (get_recent_decisions, "get_recent_decisions", "Neueste Gerichtsentscheide"),
+    (get_decision_statistics, "get_decision_statistics", "Entscheid-Statistiken"),
+]
+
+
+def register_tools(mcp: FastMCP) -> None:
+    """Registriert alle Tools mit expliziten Annotations (ARCH-009)."""
+    for fn, name, title in _TOOLS:
+        mcp.tool(name=name, annotations={"title": title, **_READ_ONLY})(fn)
+
+
+def register_prompts(mcp: FastMCP) -> None:
+    """Registriert kuratierte Prompts (zweites Primitiv, ARCH-008)."""
+
+    @mcp.prompt(name="rechtsrecherche", title="Schweizer Rechtsrecherche")
+    def rechtsrecherche(thema: str, kanton: str = "") -> str:
+        """Strukturierte Rechtsrecherche zu einem Thema (mit fedlex-mcp-Synergie)."""
+        kanton_hint = f" mit Fokus auf Kanton {kanton}" if kanton else ""
+        return (
+            f"Führe eine strukturierte Rechtsrecherche zum Thema '{thema}'{kanton_hint} durch:\n"
+            "1. Nutze search_by_law_reference für einschlägige Normen.\n"
+            "2. Nutze search_court_decisions für die Rechtsprechung.\n"
+            "3. Fasse die führenden Entscheide mit Signatur und Datum zusammen.\n"
+            "4. Verweise auf den Volltext-Link jeder zitierten Quelle."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Lifespan (SDK-001): ein gepoolter httpx-Client für alle Tool-Calls
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def app_lifespan(server: FastMCP) -> AsyncIterator[dict]:
+    """Erzeugt den HTTP-Client beim Start, schliesst ihn beim Shutdown."""
+    configure_logging(os.environ.get("MCP_LOG_LEVEL", "INFO"))
+    client = api_client.new_client()
+    log.info("server_startup")
+    try:
+        yield {"client": client}
+    finally:
+        await client.aclose()
+        log.info("server_shutdown")
+
+
+# ---------------------------------------------------------------------------
+# Server-Factory
+# ---------------------------------------------------------------------------
+
+
+def _build_auth(settings: Settings):
+    """Baut (AuthSettings, TokenVerifier) für den HTTP-Modus (SEC-009)."""
+    from mcp.server.auth.settings import AuthSettings
+
+    from swiss_courts_mcp.auth import JWTTokenVerifier
+
+    base = f"http://{settings.host}:{settings.port}"
+    auth_settings = AuthSettings(
+        issuer_url=settings.oauth_issuer or base,
+        resource_server_url=base,
+        required_scopes=settings.required_scopes or None,
+    )
+    return auth_settings, JWTTokenVerifier(settings)
+
+
+def create_mcp(settings: Settings, *, http: bool = False) -> FastMCP:
+    """Baut eine FastMCP-Instanz. Auth wird nur im HTTP-Modus verdrahtet."""
+    kwargs: dict = dict(
+        instructions=(
+            "MCP-Server für Schweizer Gerichtsentscheide via entscheidsuche.ch. "
+            "Zugriff auf Urteile des Bundesgerichts (BGer), Bundesverwaltungsgerichts (BVGer), "
+            "Bundesstrafgerichts (BStGer) und kantonaler Gerichte aller 26 Kantone. "
+            "Ideal in Kombination mit fedlex-mcp für vollständige Rechtsrecherche. "
+            "Alle Daten stammen von entscheidsuche.ch (öffentlich, kein API-Key nötig)."
+        ),
+        lifespan=app_lifespan,
+        host=settings.host,
+        port=settings.port,
+    )
+    if http:
+        kwargs["stateless_http"] = settings.stateless_http  # SCALE-002: zustandslos skalierbar
+        if settings.auth_enabled:
+            auth_settings, verifier = _build_auth(settings)
+            kwargs["auth"] = auth_settings
+            kwargs["token_verifier"] = verifier
+
+    mcp = FastMCP("swiss_courts_mcp", **kwargs)
+    register_tools(mcp)
+    register_prompts(mcp)
+    return mcp
+
+
+# Modul-Instanz für stdio (Default) und den Script-Entry-Point.
+mcp = create_mcp(Settings.from_env(), http=False)
 
 
 # ---------------------------------------------------------------------------
@@ -757,14 +818,44 @@ async def get_decision_statistics(params: DecisionStatsInput) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _run_http(settings: Settings) -> None:
+    """Startet den HTTP-Transport mit Auth (SEC-009) und CORS (SDK-004)."""
+    import uvicorn
+    from starlette.middleware.cors import CORSMiddleware
+
+    if settings.host == "0.0.0.0" and not settings.allow_public_bind:  # noqa: S104
+        log.warning(
+            "public_bind_without_optin",
+            hint="0.0.0.0 nur in Containern/Trusted-Net; setze MCP_ALLOW_PUBLIC_BIND=1",
+        )
+    if not settings.auth_enabled:
+        log.warning(
+            "http_without_auth",
+            hint="HTTP-Modus ohne Auth — nur hinter authentifizierendem Proxy betreiben",
+        )
+
+    server = create_mcp(settings, http=True)
+    app = server.streamable_http_app()
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=settings.auth_enabled,
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Mcp-Session-Id", "Authorization", "Content-Type"],
+            expose_headers=["Mcp-Session-Id"],
+        )
+    uvicorn.run(app, host=settings.host, port=settings.port)
+
+
 def main():
-    """Startet den MCP-Server mit Dual-Transport (stdio oder streamable-http)."""
+    """Startet den MCP-Server (Default stdio, optional streamable-http)."""
     if "--http" in sys.argv:
-        port = 8000
+        settings = Settings.from_env()
         for i, arg in enumerate(sys.argv):
             if arg == "--port" and i + 1 < len(sys.argv):
-                port = int(sys.argv[i + 1])
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+                settings = settings.model_copy(update={"port": int(sys.argv[i + 1])})
+        _run_http(settings)
     else:
         mcp.run()
 

@@ -36,7 +36,7 @@ MAX_SIZE = 50
 # Bewusst als frozenset, nicht zur Laufzeit mutierbar.
 ALLOWED_HOSTS: frozenset[str] = frozenset({"entscheidsuche.ch"})
 
-USER_AGENT = "swiss-courts-mcp/0.1.0"
+USER_AGENT = "swiss-courts-mcp/0.2.0"
 
 
 class EgressNotAllowedError(RuntimeError):

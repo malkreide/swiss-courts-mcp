@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name        = "swiss-courts-mcp"
-version     = "0.1.0"
+version     = "0.2.0"
 description = "MCP Server for Swiss court decisions — Federal Supreme Court, Federal Administrative Court, Federal Criminal Court + 26 cantonal courts via entscheidsuche.ch"
 readme      = "README.md"
 license     = { file = "LICENSE" }

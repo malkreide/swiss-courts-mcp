@@ -13,8 +13,13 @@ Endpunkte:
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 
 import httpx
+
+from swiss_courts_mcp.logging_config import get_logger
+
+log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Konstanten
@@ -26,6 +31,30 @@ FACETS_URL = f"{DOCS_BASE}/Facetten_alle.json"
 
 REQUEST_TIMEOUT = 30.0
 MAX_SIZE = 50
+
+# Egress-Allow-List (SEC-021): Code-Layer-Schranke gegen ungewollte Ziele.
+# Bewusst als frozenset, nicht zur Laufzeit mutierbar.
+ALLOWED_HOSTS: frozenset[str] = frozenset({"entscheidsuche.ch"})
+
+USER_AGENT = "swiss-courts-mcp/0.1.0"
+
+
+class EgressNotAllowedError(RuntimeError):
+    """Ziel-Host steht nicht auf der Egress-Allow-List."""
+
+
+def assert_host_allowed(url: str) -> None:
+    """Validiert Schema (HTTPS) und Host gegen die Allow-List (SEC-004, SEC-021).
+
+    Wird vor jedem ausgehenden Request aufgerufen. Da nur ein fester Host
+    erlaubt ist, begrenzt das zugleich die DNS-Rebinding-Fläche (SEC-005).
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise EgressNotAllowedError(f"Nur HTTPS erlaubt, nicht {parsed.scheme!r}")
+    host = (parsed.hostname or "").lower()
+    if host not in ALLOWED_HOSTS:
+        raise EgressNotAllowedError(f"Host {host!r} nicht auf der Egress-Allow-List")
 
 # Mapping: Spider-Prefix → Gerichts-Hierarchie für Filter
 COURT_LEVEL_PREFIXES = {
@@ -234,37 +263,67 @@ def build_law_reference_body(
 # ---------------------------------------------------------------------------
 
 
-async def _get_client() -> httpx.AsyncClient:
-    """Erstellt einen konfigurierten httpx-Client."""
+def new_client() -> httpx.AsyncClient:
+    """Erstellt einen konfigurierten httpx-Client.
+
+    Wird vom Lifespan (SDK-001) einmalig erzeugt und über den Server-Kontext
+    allen Tool-Calls bereitgestellt. Kein Client-Aufbau pro Request mehr.
+    """
     return httpx.AsyncClient(
         timeout=REQUEST_TIMEOUT,
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "swiss-courts-mcp/0.1.0",
+            "User-Agent": USER_AGENT,
         },
     )
 
 
-async def search_decisions(body: dict) -> dict:
+class _TransientClient:
+    """Fallback-Context-Manager, wenn kein gepoolter Client übergeben wird.
+
+    Hält den Code rückwärtskompatibel (z.B. Live-Tests, die die HTTP-Funktionen
+    direkt ohne Client aufrufen).
+    """
+
+    def __init__(self, client: httpx.AsyncClient | None) -> None:
+        self._provided = client
+        self._owned: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> httpx.AsyncClient:
+        if self._provided is not None:
+            return self._provided
+        self._owned = new_client()
+        return self._owned
+
+    async def __aexit__(self, *exc) -> None:
+        if self._owned is not None:
+            await self._owned.aclose()
+
+
+async def search_decisions(body: dict, client: httpx.AsyncClient | None = None) -> dict:
     """POST-Suche an entscheidsuche.ch mit Elasticsearch-Body."""
-    async with await _get_client() as client:
-        response = await client.post(SEARCH_URL, json=body)
+    assert_host_allowed(SEARCH_URL)
+    async with _TransientClient(client) as http:
+        response = await http.post(SEARCH_URL, json=body)
         response.raise_for_status()
         return response.json()
 
 
-async def get_decision_by_id(signature: str) -> dict | None:
+async def get_decision_by_id(
+    signature: str, client: httpx.AsyncClient | None = None
+) -> dict | None:
     """Einzelnen Entscheid anhand der Signatur abrufen."""
     body = build_id_query(signature)
-    result = await search_decisions(body)
+    result = await search_decisions(body, client=client)
     hits = result.get("hits", {}).get("hits", [])
     return hits[0] if hits else None
 
 
-async def get_court_taxonomy() -> dict:
+async def get_court_taxonomy(client: httpx.AsyncClient | None = None) -> dict:
     """Gerichts-Taxonomie (Facetten) abrufen."""
-    async with await _get_client() as client:
-        response = await client.get(FACETS_URL)
+    assert_host_allowed(FACETS_URL)
+    async with _TransientClient(client) as http:
+        response = await http.get(FACETS_URL)
         response.raise_for_status()
         return response.json()
 
@@ -336,9 +395,18 @@ def extract_total(result: dict) -> int:
 
 
 def handle_error(e: Exception) -> str:
-    """Einheitliche, handlungsweisende Fehlermeldungen."""
+    """Einheitliche, handlungsweisende Fehlermeldungen.
+
+    Maskiert interne Details (OBS-002): an den Client/das LLM geht nur eine
+    benutzerfreundliche Meldung ohne Stacktrace, Exception-Repr oder Internals.
+    Der Originalfehler wird ausschliesslich serverseitig geloggt.
+    """
+    if isinstance(e, EgressNotAllowedError):
+        log.error("egress_blocked", error=str(e))
+        return "Fehler: Ziel-Adresse ist nicht erlaubt (Egress-Policy)."
     if isinstance(e, httpx.HTTPStatusError):
         code = e.response.status_code
+        log.warning("upstream_http_error", status_code=code)
         if code == 400:
             return "Fehler: Ungültige Suchabfrage (HTTP 400). Suchparameter überprüfen."
         if code == 429:
@@ -347,10 +415,14 @@ def handle_error(e: Exception) -> str:
             return "Fehler: entscheidsuche.ch vorübergehend nicht verfügbar."
         return f"Fehler: HTTP {code} von entscheidsuche.ch."
     if isinstance(e, (httpx.TimeoutException, httpx.ReadTimeout)):
+        log.warning("upstream_timeout")
         return (
             "Fehler: Timeout bei entscheidsuche.ch. "
             "Komplexe Suchen können länger dauern — bitte erneut versuchen."
         )
     if isinstance(e, httpx.ConnectError):
+        log.warning("upstream_connect_error")
         return "Fehler: Verbindung zu entscheidsuche.ch fehlgeschlagen. Internetverbindung prüfen."
-    return f"Fehler: {type(e).__name__}: {e}"
+    # Unerwarteter Fehler: Details NUR ins Server-Log, nicht an den Client.
+    log.error("unexpected_error", error_type=type(e).__name__, exc_info=e)
+    return "Fehler: Interner Fehler bei der Verarbeitung der Anfrage."

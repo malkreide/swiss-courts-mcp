@@ -47,3 +47,20 @@ Use conventional commits where possible:
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+
+---
+
+## Beitragen (Deutsch)
+
+Beiträge sind willkommen! Das Projekt folgt dem **No-Auth-First**-Prinzip —
+alle Datenquellen müssen ohne API-Key öffentlich zugänglich sein.
+
+- **Issues:** über [GitHub Issues](https://github.com/malkreide/swiss-courts-mcp/issues),
+  mit Reproduktionsschritten und erwartetem vs. tatsächlichem Verhalten.
+- **Pull Requests:** Feature-Branch, `pip install -e ".[dev]"`, dann
+  `pytest tests/ -v -m "not live"` und `ruff check src/ tests/` ausführen.
+- **Commits:** Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`).
+- **Code-Stil:** Python 3.11+, async/await, Ruff, Pydantic mit `extra="forbid"`;
+  deutschsprachige User-Strings, englische Code-Identifier.
+- **Phasen:** Der Server ist in **Phase 1 (read-only)** — siehe
+  [ROADMAP.md](ROADMAP.md). Schreibende Tools erst nach Phase-2-Freigabe.

@@ -97,11 +97,53 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-### Cloud Deployment
+### Cloud Deployment (HTTP transport)
+
+The HTTP transport is **off by default**. The default bind host is `127.0.0.1`
+(loopback only) — `0.0.0.0` must be opted into explicitly (the Dockerfile does
+this). Running HTTP without authentication logs a warning; only do so behind an
+authenticating reverse proxy.
 
 ```bash
+# Local HTTP (loopback), no auth — development only
 swiss-courts-mcp --http --port 8000
+
+# Container (binds 0.0.0.0, auth enabled) — see Dockerfile
+docker build -t swiss-courts-mcp .
+docker run -p 8000:8000 -e MCP_AUTH_SECRET="$(openssl rand -hex 32)" swiss-courts-mcp
 ```
+
+Relevant environment variables (see [`.env.example`](.env.example)):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MCP_HOST` | `127.0.0.1` | Bind host. Set to `0.0.0.0` only in containers. |
+| `MCP_PORT` | `8000` | Bind port. |
+| `MCP_ALLOW_PUBLIC_BIND` | `false` | Suppress the `0.0.0.0` warning (containers). |
+| `MCP_STATELESS_HTTP` | `true` | Stateless HTTP → horizontal scaling without sticky sessions. |
+| `MCP_AUTH_ENABLED` | `false` | Enable bearer-token auth for HTTP. |
+| `MCP_AUTH_SECRET` | — | HS256 signing key (dev). |
+| `MCP_OAUTH_JWKS_URL` | — | JWKS URL for RS256 validation (production). |
+| `MCP_REQUIRED_SCOPES` | — | Comma-separated required scopes. |
+| `MCP_CORS_ORIGINS` | — | Comma-separated allowed origins (no wildcard in prod). |
+
+Authentication validates the user identity from the JWT `sub` claim only; see
+[ADR 0001](docs/adr/0001-http-auth.md).
+
+---
+
+## MCP Protocol Version
+
+This server pins MCP protocol version **`2025-11-25`** (constant
+`PROTOCOL_VERSION` in `server.py`). A regression test detects drift against the
+installed SDK so a protocol bump is a conscious change (version + CHANGELOG +
+this section). SDK updates land monthly via Dependabot.
+
+## Project Phase
+
+**Phase 1 — read-only** (see [ROADMAP.md](ROADMAP.md)). All tools are
+`readOnlyHint: true`; there are no writing or destructive operations. A move to
+Phase 2 (write) requires a clean re-audit and the gates listed in the roadmap.
 
 ---
 
@@ -123,6 +165,21 @@ swiss-courts-mcp --http --port 8000
 | `list_courts` | List all indexed courts, optionally filtered by canton |
 | `get_recent_decisions` | Latest decisions, filterable by canton and court level |
 | `get_decision_statistics` | Statistics on indexed decisions by canton and year |
+
+### Tool Annotations
+
+All seven tools share the same hints — they are read-only, idempotent,
+non-destructive, and reach an external system:
+
+| Annotation | Value |
+|---|---|
+| `readOnlyHint` | `true` |
+| `destructiveHint` | `false` |
+| `idempotentHint` | `true` |
+| `openWorldHint` | `true` |
+
+A `rechtsrecherche` **prompt** is also provided (a second MCP primitive
+alongside tools).
 
 ### Example Use Cases
 
@@ -169,7 +226,11 @@ swiss-courts-mcp --http --port 8000
 | **Personal data** | No personal data — all decisions are public court rulings |
 | **Rate limits** | Built-in per-query caps (max 50 results per search, 50 aggregation buckets) |
 | **Timeout** | 30 seconds per API call |
-| **Authentication** | No API keys required — entscheidsuche.ch is publicly accessible |
+| **Data source auth** | No API keys required — entscheidsuche.ch is publicly accessible |
+| **HTTP transport auth** | Optional bearer-token auth (JWT, `sub`-claim identity); see [ADR 0001](docs/adr/0001-http-auth.md) |
+| **Egress** | Code-layer allow-list (`entscheidsuche.ch` only, HTTPS-enforced); see [egress policy](docs/network-egress.md) |
+| **Error masking** | Internal exceptions are logged server-side only; clients receive friendly messages |
+| **Secrets** | No secrets in code/logs; `.env` git-ignored, Gitleaks on PRs; see [secret management](docs/secret-management.md) |
 | **Licenses** | Court decisions are public domain under Swiss law ([BGG Art. 27](https://www.fedlex.admin.ch/eli/cc/2006/218/de#art_27)) |
 | **Terms of Service** | Subject to [entscheidsuche.ch](https://entscheidsuche.ch) usage terms — please be kind to the server |
 
@@ -183,21 +244,26 @@ swiss-courts-mcp/
 │   └── swiss_courts_mcp/
 │       ├── __init__.py
 │       ├── __main__.py
-│       ├── server.py            # MCP server + 7 tools
-│       └── api_client.py        # HTTP client + ES query builder
-├── tests/
-│   ├── test_api_client.py
-│   └── test_server.py
-├── .github/workflows/
-│   ├── ci.yml                   # Tests + linting
-│   └── publish.yml              # PyPI trusted publishing
-├── pyproject.toml
-├── CHANGELOG.md
-├── CONTRIBUTING.md
-├── LICENSE
-├── README.md                    # English
-└── README.de.md                 # German
+│       ├── server.py            # MCP server, 7 tools + 1 prompt, lifespan, auth wiring
+│       ├── api_client.py        # HTTP client, ES query builder, egress allow-list
+│       ├── auth.py              # JWT bearer-token verifier (HTTP transport)
+│       ├── config.py            # Settings object (env-driven)
+│       ├── logging_config.py    # structured logging on stderr
+│       └── models.py            # structured response envelope
+├── tests/                       # unit (respx-mocked) + live + security tests
+├── docs/                        # egress, secret-management, ADRs
+├── .github/workflows/           # ci · security (gitleaks) · live · publish
+├── Dockerfile                   # hardened container (non-root, 0.0.0.0 only here)
+├── ROADMAP.md
+├── pyproject.toml · CHANGELOG.md · CONTRIBUTING.md · LICENSE
+└── README.md · README.de.md
 ```
+
+> **Note (single-file tools):** the 7 tools live in `server.py` rather than a
+> `tools/` package. At this count a single module stays readable; the registry
+> (`register_tools`) keeps registration declarative. This is a deliberate
+> deviation from the "split when > 5 tools" convention and will be revisited if
+> the tool count grows.
 
 ---
 
@@ -212,11 +278,15 @@ swiss-courts-mcp/
 
 ## Testing
 
+Unit tests mock all HTTP with `respx`; live tests hit the real API and run in a
+separate nightly workflow ([`live.yml`](.github/workflows/live.yml)), never
+blocking PRs.
+
 ```bash
-# Unit tests
+# Unit tests (HTTP mocked) — what CI runs
 pytest tests/ -v -m "not live"
 
-# Live API tests
+# Live API tests (real entscheidsuche.ch)
 pytest tests/ -v -m live
 
 # Linting

@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- HTTP transport now supports bearer-token authentication via the SDK-native
+  `TokenVerifier` (JWT, identity from validated `sub` claim; HS256 + RS256/JWKS).
+  See `docs/adr/0001-http-auth.md`. (SEC-009)
+- Safe default bind host `127.0.0.1`; `0.0.0.0` requires explicit opt-in and logs
+  a warning otherwise. (SEC-016)
+- Egress allow-list (`entscheidsuche.ch` only, HTTPS-enforced) checked before
+  every outbound request; see `docs/network-egress.md`. (SEC-021/SEC-004/SEC-005)
+- Error masking: internal exceptions are logged server-side only; clients receive
+  friendly messages. (OBS-002)
+- Added `.gitignore` (`.env*` excluded), `.env.example`, and a Gitleaks CI
+  workflow. (ARCH-005)
+
+### Added
+
+- CORS configuration for the HTTP transport exposing `Mcp-Session-Id`. (SDK-004)
+- Stateless HTTP mode for horizontal scaling without sticky sessions. (SCALE-002)
+- Structured logging (structlog) on stderr. (OBS-003)
+- Context injection with progress reporting in search tools. (SDK-003)
+- Machine-readable `match_type` and source/license provenance in responses.
+  (ARCH-003/CH-004/SDK-002)
+- `rechtsrecherche` prompt as a second MCP primitive. (ARCH-008)
+- Hardened `Dockerfile` (non-root UID 10001), Dependabot, nightly live-test
+  workflow, and `ROADMAP.md` with the explicit read-only Phase 1 declaration.
+  (SEC-007/ARCH-012/OPS-001/OPS-003)
+- `docs/`: network egress, secret management, and ADR 0001.
+
+### Changed
+
+- Tools now raise `ToolError` for upstream failures so errors surface as
+  `isError` results instead of plain text. (OBS-001)
+- Single shared `httpx.AsyncClient` via a FastMCP lifespan instead of one client
+  per tool call. (SDK-001)
+- Pinned MCP protocol version `2025-11-25` with a drift-detection test. (ARCH-012)
+- README/README.de expanded (protocol version, phase, annotations, security);
+  CONTRIBUTING is now bilingual. (OPS-002)
+
+### Notes
+
+- MCP protocol version: **2025-11-25**. No phase transition — server remains
+  Phase 1 (read-only).
+
 ## [0.1.0] - 2026-04-12
 
 ### Added

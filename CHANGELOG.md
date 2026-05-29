@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-29
+
+> **Audit verification:** production-ready ✅ — mcp-audit skill `v1.0.0`,
+> 36 pass · 0 fail · 0 partial. Run `2026-05-29T191910-Z-swiss-courts-mcp`.
+
 ### Security
 
 - HTTP transport now supports bearer-token authentication via the SDK-native

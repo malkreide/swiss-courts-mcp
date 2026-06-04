@@ -2,7 +2,7 @@
 
 > **Teil des [Swiss Public Data MCP Portfolios](https://github.com/malkreide)**
 
-# swiss-courts-mcp
+# 🏛️ swiss-courts-mcp
 
 ![Version](https://img.shields.io/badge/version-0.2.0-blue)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -274,7 +274,13 @@ Siehe [CHANGELOG.md](CHANGELOG.md).
 
 ## Mitwirken
 
-Siehe [CONTRIBUTING.md](CONTRIBUTING.md).
+Siehe [CONTRIBUTING.de.md](CONTRIBUTING.de.md).
+
+---
+
+## Sicherheit
+
+Siehe [SECURITY.de.md](SECURITY.de.md) für die Sicherheitslage und das Melden von Schwachstellen.
 
 ---
 

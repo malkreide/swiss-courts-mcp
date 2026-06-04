@@ -1,66 +1,68 @@
-# Contributing
+# Contributing to swiss-courts-mcp
 
-Contributions are welcome! This project follows a **No-Auth-First** principle — all data sources must be publicly accessible without API keys.
+[:de: Deutsche Version](CONTRIBUTING.de.md)
+
+Thank you for your interest in contributing! This server is part of the [Swiss Public Data MCP Portfolio](https://github.com/malkreide). The project follows a **No-Auth-First** principle — all data sources must be publicly accessible without API keys.
+
+---
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/malkreide/swiss-courts-mcp/issues)
-- Include steps to reproduce, expected vs. actual behavior
+Use [GitHub Issues](https://github.com/malkreide/swiss-courts-mcp/issues) to report bugs or request features.
+
+Please include:
+- Python version and OS
+- Full error message or description of unexpected behaviour
+- Steps to reproduce
 - For API issues, note whether entscheidsuche.ch itself is reachable
+
+---
 
 ## Pull Requests
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
+2. Create a feature branch: `git checkout -b feat/your-feature`
 3. Install dev dependencies: `pip install -e ".[dev]"`
-4. Make your changes
-5. Run tests and linting:
+4. Make your changes and add tests
+5. Ensure tests and linting pass:
    ```bash
    pytest tests/ -v -m "not live"
    ruff check src/ tests/
    ```
-6. Commit with a descriptive message and open a PR
+6. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat: add new tool`
+7. Push and open a Pull Request
 
-### Commit Messages
-
-Use conventional commits where possible:
-
-- `feat: add new tool for X`
-- `fix: handle empty response from API`
-- `docs: update README with new examples`
-- `test: add tests for law reference parser`
+---
 
 ## Code Style
 
 - Python 3.11+, async/await throughout
-- Ruff for formatting and linting (config in `pyproject.toml`)
+- [Ruff](https://github.com/astral-sh/ruff) for linting and formatting (config in `pyproject.toml`)
+- Type hints required for all public functions
 - Pydantic models for all tool inputs with `extra="forbid"`
-- German for user-facing strings (error messages, tool descriptions)
-- English for code identifiers (function names, variables)
+- German for user-facing strings (error messages, tool descriptions); English for code identifiers
+- Tests required for new tools; follow the existing FastMCP / Pydantic v2 patterns in `server.py`
 
-## Data Sources
+---
+
+## Data Source
+
+This server uses the public entscheidsuche.ch endpoint — no authentication required.
 
 | Source | URL | Auth |
 |--------|-----|------|
 | entscheidsuche.ch | https://entscheidsuche.ch | None |
 
-## License
-
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+When adding new queries, verify them manually against the endpoint first and handle edge cases (missing optional fields, timeout on broad queries).
 
 ---
 
-## Beitragen (Deutsch)
+## Project Phase
 
-Beiträge sind willkommen! Das Projekt folgt dem **No-Auth-First**-Prinzip —
-alle Datenquellen müssen ohne API-Key öffentlich zugänglich sein.
+The server is in **Phase 1 (read-only)** — see [ROADMAP.md](ROADMAP.md). Writing tools are only accepted after Phase 2 is cleared.
 
-- **Issues:** über [GitHub Issues](https://github.com/malkreide/swiss-courts-mcp/issues),
-  mit Reproduktionsschritten und erwartetem vs. tatsächlichem Verhalten.
-- **Pull Requests:** Feature-Branch, `pip install -e ".[dev]"`, dann
-  `pytest tests/ -v -m "not live"` und `ruff check src/ tests/` ausführen.
-- **Commits:** Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`).
-- **Code-Stil:** Python 3.11+, async/await, Ruff, Pydantic mit `extra="forbid"`;
-  deutschsprachige User-Strings, englische Code-Identifier.
-- **Phasen:** Der Server ist in **Phase 1 (read-only)** — siehe
-  [ROADMAP.md](ROADMAP.md). Schreibende Tools erst nach Phase-2-Freigabe.
+---
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).

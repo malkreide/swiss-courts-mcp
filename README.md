@@ -1,6 +1,6 @@
 > **Part of the [Swiss Public Data MCP Portfolio](https://github.com/malkreide)**
 
-# swiss-courts-mcp
+# 🏛️ swiss-courts-mcp
 
 ![Version](https://img.shields.io/badge/version-0.2.0-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -255,7 +255,9 @@ swiss-courts-mcp/
 ├── .github/workflows/           # ci · security (gitleaks) · live · publish
 ├── Dockerfile                   # hardened container (non-root, 0.0.0.0 only here)
 ├── ROADMAP.md
-├── pyproject.toml · CHANGELOG.md · CONTRIBUTING.md · LICENSE
+├── pyproject.toml · CHANGELOG.md · LICENSE
+├── CONTRIBUTING.md · CONTRIBUTING.de.md
+├── SECURITY.md · SECURITY.de.md
 └── README.md · README.de.md
 ```
 
@@ -305,6 +307,12 @@ See [CHANGELOG.md](CHANGELOG.md).
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the security posture and how to report a vulnerability.
 
 ---
 

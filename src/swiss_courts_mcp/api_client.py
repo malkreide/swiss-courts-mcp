@@ -269,10 +269,18 @@ def new_client() -> httpx.AsyncClient:
     Wird vom Lifespan (SDK-001) einmalig erzeugt und über den Server-Kontext
     allen Tool-Calls bereitgestellt. Kein Client-Aufbau pro Request mehr.
     """
+    # Kein globaler "Content-Type": Als Client-Default würde er auch GET-Requests
+    # (z.B. die Facetten/Taxonomie als statische .json-Datei) ohne Body mit
+    # "Content-Type: application/json" versehen. Das WAF/CDN von entscheidsuche.ch
+    # quittiert solche bodylosen, aber Content-Type-deklarierenden GETs mit
+    # HTTP 415 (Unsupported Media Type). httpx setzt den Content-Type beim POST
+    # ohnehin automatisch pro Request über `json=`. Zusätzlich signalisiert
+    # "Accept: application/json" explizit das gewünschte Antwortformat (statt des
+    # httpx-Defaults "*/*", der WAF-Bot-Mitigation triggern kann).
     return httpx.AsyncClient(
         timeout=REQUEST_TIMEOUT,
         headers={
-            "Content-Type": "application/json",
+            "Accept": "application/json",
             "User-Agent": USER_AGENT,
         },
     )

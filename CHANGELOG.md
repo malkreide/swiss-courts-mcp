@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Full-text search returned no results (HTTP 200 but `total == 0`) because
+  `simple_query_string` queried only the index's `default_field`, which does not
+  cover the ingest-attachment full text. Searches now target the relevant fields
+  explicitly (`attachment.content`, `title.*`, `abstract.*`, `reference`) with
+  `lenient` enabled. Affects `build_search_body` and `build_law_reference_body`.
+
 ## [0.2.0] - 2026-05-29
 
 > **Audit verification:** production-ready ✅ — mcp-audit skill `v1.0.0`,

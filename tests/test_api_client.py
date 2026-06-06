@@ -27,6 +27,15 @@ class TestBuildSearchBody:
         assert body["sort"] == [{"date": {"order": "desc"}}]
         assert "simple_query_string" in str(body["query"])
 
+    def test_query_targets_fulltext_fields(self):
+        # Ohne explizite `fields` durchsucht simple_query_string nur das
+        # default_field des Index und findet den ingest-attachment-Volltext
+        # nicht (HTTP 200, aber total == 0). Der Volltext muss adressiert sein.
+        body = build_search_body(query="Datenschutz")
+        sqs = body["query"]["bool"]["must"][0]["simple_query_string"]
+        assert "attachment.content" in sqs["fields"]
+        assert sqs["lenient"] is True
+
     def test_match_all_without_query(self):
         body = build_search_body()
         assert body["query"] == {"match_all": {}}

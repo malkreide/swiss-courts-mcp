@@ -64,6 +64,27 @@ COURT_LEVEL_PREFIXES = {
     "bundespatentgericht": ["CH_PATG"],
 }
 
+# Volltext-Felder für die Suche.
+#
+# Ohne explizite `fields` durchsucht `simple_query_string` nur das
+# `index.query.default_field` des entscheidsuche.ch-Index. Dieses deckt den
+# eigentlichen Urteils-Volltext NICHT ab — der liegt im ingest-attachment-Feld
+# `attachment.content` (vgl. `attachment.language`, das wir bereits auslesen).
+# Folge: bodylose Treffer (HTTP 200, aber `total == 0`) selbst für gängige
+# Begriffe wie "Datenschutz". Wir adressieren die relevanten Felder daher
+# explizit. `lenient` verhindert Format-Fehler, falls ein Feld in einem
+# Teilindex anders gemappt ist.
+SEARCH_FIELDS = [
+    "attachment.content",  # Volltext des Urteils (ingest-attachment)
+    "title.de",
+    "title.fr",
+    "title.it",
+    "abstract.de",
+    "abstract.fr",
+    "abstract.it",
+    "reference",
+]
+
 
 # ---------------------------------------------------------------------------
 # Query-Builder
@@ -95,7 +116,9 @@ def build_search_body(
         must_clauses.append({
             "simple_query_string": {
                 "query": query,
+                "fields": SEARCH_FIELDS,
                 "default_operator": "and",
+                "lenient": True,
             }
         })
 
@@ -209,7 +232,9 @@ def build_law_reference_body(
     should_clauses.append({
         "simple_query_string": {
             "query": f"\"{law_reference}\"",
+            "fields": SEARCH_FIELDS,
             "default_operator": "and",
+            "lenient": True,
             "boost": 10,
         }
     })
@@ -220,7 +245,9 @@ def build_law_reference_body(
         should_clauses.append({
             "simple_query_string": {
                 "query": f"{parsed['article']} {parsed['law']}",
+                "fields": SEARCH_FIELDS,
                 "default_operator": "and",
+                "lenient": True,
                 "boost": 3,
             }
         })
@@ -230,7 +257,9 @@ def build_law_reference_body(
         should_clauses.append({
             "simple_query_string": {
                 "query": f"\"{parsed['law']}\"",
+                "fields": SEARCH_FIELDS,
                 "default_operator": "and",
+                "lenient": True,
                 "boost": 1,
             }
         })

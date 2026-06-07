@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-06-07
+
+### Added
+
+- Declared `mcp-name` (`io.github.malkreide/swiss-courts-mcp`) in `pyproject.toml`
+  and `README.md` to establish PyPI/MCP Registry ownership.
+
 ### Fixed
 
 - Full-text search returned no results (HTTP 200 but `total == 0`) because

@@ -334,3 +334,5 @@ Hayal Oezkan · [malkreide](https://github.com/malkreide)
 - [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) — MCP Server for Swiss federal law (legislation synergy)
 - [zurich-opendata-mcp](https://github.com/malkreide/zurich-opendata-mcp) — MCP Server for Zurich open data
 - [Model Context Protocol](https://modelcontextprotocol.io/) — Open protocol for AI tool integration
+
+<!-- mcp-name: io.github.malkreide/swiss-courts-mcp -->

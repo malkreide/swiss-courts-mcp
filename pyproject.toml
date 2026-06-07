@@ -57,6 +57,7 @@ dev = [
 swiss-courts-mcp = "swiss_courts_mcp.server:mcp.run"
 
 [project.urls]
+"mcp-name" = "io.github.malkreide/swiss-courts-mcp"
 Homepage       = "https://github.com/malkreide/swiss-courts-mcp"
 Repository     = "https://github.com/malkreide/swiss-courts-mcp"
 Issues         = "https://github.com/malkreide/swiss-courts-mcp/issues"

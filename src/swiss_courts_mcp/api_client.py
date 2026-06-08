@@ -64,26 +64,19 @@ COURT_LEVEL_PREFIXES = {
     "bundespatentgericht": ["CH_PATG"],
 }
 
-# Volltext-Felder für die Suche.
+# Volltextsuche: KEINE expliziten `fields`.
 #
-# Ohne explizite `fields` durchsucht `simple_query_string` nur das
-# `index.query.default_field` des entscheidsuche.ch-Index. Dieses deckt den
-# eigentlichen Urteils-Volltext NICHT ab — der liegt im ingest-attachment-Feld
-# `attachment.content` (vgl. `attachment.language`, das wir bereits auslesen).
-# Folge: bodylose Treffer (HTTP 200, aber `total == 0`) selbst für gängige
-# Begriffe wie "Datenschutz". Wir adressieren die relevanten Felder daher
-# explizit. `lenient` verhindert Format-Fehler, falls ein Feld in einem
-# Teilindex anders gemappt ist.
-SEARCH_FIELDS = [
-    "attachment.content",  # Volltext des Urteils (ingest-attachment)
-    "title.de",
-    "title.fr",
-    "title.it",
-    "abstract.de",
-    "abstract.fr",
-    "abstract.it",
-    "reference",
-]
+# `simple_query_string` ohne `fields` nutzt das serverseitig konfigurierte
+# `index.query.default_field` des entscheidsuche.ch-Index, das den durchsuchbaren
+# Volltext (inkl. ingest-attachment) abdeckt. Das ist der Weg, den auch die
+# offizielle Suchoberfläche und die Referenz-Implementierung verwenden.
+#
+# Ein früherer Versuch, die Felder explizit zu adressieren
+# (`attachment.content`, `title.de`, …), führte zu bodylosen Treffern
+# (HTTP 200, aber `total == 0`): Diese Feldnamen sind im realen Mapping nicht
+# als abfragbare Felder vorhanden, und mit `lenient: true` verwirft
+# Elasticsearch alle nicht auflösbaren Klauseln stillschweigend — die Query
+# matcht dann nichts. Daher verlassen wir uns wieder auf das default_field.
 
 
 # ---------------------------------------------------------------------------
@@ -116,9 +109,7 @@ def build_search_body(
         must_clauses.append({
             "simple_query_string": {
                 "query": query,
-                "fields": SEARCH_FIELDS,
                 "default_operator": "and",
-                "lenient": True,
             }
         })
 
@@ -232,9 +223,7 @@ def build_law_reference_body(
     should_clauses.append({
         "simple_query_string": {
             "query": f"\"{law_reference}\"",
-            "fields": SEARCH_FIELDS,
             "default_operator": "and",
-            "lenient": True,
             "boost": 10,
         }
     })
@@ -245,9 +234,7 @@ def build_law_reference_body(
         should_clauses.append({
             "simple_query_string": {
                 "query": f"{parsed['article']} {parsed['law']}",
-                "fields": SEARCH_FIELDS,
                 "default_operator": "and",
-                "lenient": True,
                 "boost": 3,
             }
         })
@@ -257,9 +244,7 @@ def build_law_reference_body(
         should_clauses.append({
             "simple_query_string": {
                 "query": f"\"{parsed['law']}\"",
-                "fields": SEARCH_FIELDS,
                 "default_operator": "and",
-                "lenient": True,
                 "boost": 1,
             }
         })

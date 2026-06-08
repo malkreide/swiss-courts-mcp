@@ -27,14 +27,16 @@ class TestBuildSearchBody:
         assert body["sort"] == [{"date": {"order": "desc"}}]
         assert "simple_query_string" in str(body["query"])
 
-    def test_query_targets_fulltext_fields(self):
-        # Ohne explizite `fields` durchsucht simple_query_string nur das
-        # default_field des Index und findet den ingest-attachment-Volltext
-        # nicht (HTTP 200, aber total == 0). Der Volltext muss adressiert sein.
+    def test_query_uses_default_field(self):
+        # `simple_query_string` adressiert KEINE expliziten `fields`: explizite
+        # Feldnamen (attachment.content, title.de, …) existieren im realen
+        # Mapping nicht als abfragbare Felder und liefern mit lenient=true
+        # bodylose Treffer (total == 0). Wir nutzen das serverseitige
+        # default_field — so wie die offizielle Suchoberfläche.
         body = build_search_body(query="Datenschutz")
         sqs = body["query"]["bool"]["must"][0]["simple_query_string"]
-        assert "attachment.content" in sqs["fields"]
-        assert sqs["lenient"] is True
+        assert "fields" not in sqs
+        assert sqs["default_operator"] == "and"
 
     def test_match_all_without_query(self):
         body = build_search_body()

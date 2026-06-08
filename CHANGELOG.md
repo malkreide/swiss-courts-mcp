@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Full-text search returned no results (HTTP 200 but `total == 0`) for ordinary
+  queries such as "Datenschutz". The previous attempt to address index fields
+  explicitly (`attachment.content`, `title.de`, …) was a misdiagnosis: those
+  names are not queryable fields in the real `entscheidsuche.ch` mapping, and
+  with `lenient: true` Elasticsearch silently drops every unresolved clause, so
+  the query matched nothing. `simple_query_string` now relies on the index's
+  server-configured `default_field` again (no explicit `fields`), matching the
+  official search frontend. Affects `build_search_body` and
+  `build_law_reference_body`.
+
 ## [0.2.3] - 2026-06-07
 
 ### Added

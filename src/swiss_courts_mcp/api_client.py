@@ -64,19 +64,25 @@ COURT_LEVEL_PREFIXES = {
     "bundespatentgericht": ["CH_PATG"],
 }
 
-# Volltextsuche: KEINE expliziten `fields`.
+# Volltext-Felder für die Suche (mit Boosts).
 #
-# `simple_query_string` ohne `fields` nutzt das serverseitig konfigurierte
-# `index.query.default_field` des entscheidsuche.ch-Index, das den durchsuchbaren
-# Volltext (inkl. ingest-attachment) abdeckt. Das ist der Weg, den auch die
-# offizielle Suchoberfläche und die Referenz-Implementierung verwenden.
+# Quelle der Wahrheit ist der offizielle entscheidsuche-Client
+# (github.com/entscheidsuche/entscheidsuche-mcp, `search.py::_build_query`).
+# Er adressiert die Felder EXPLIZIT — auf das `default_field` zu vertrauen
+# liefert bodylose Treffer (HTTP 200, aber `total == 0`).
 #
-# Ein früherer Versuch, die Felder explizit zu adressieren
-# (`attachment.content`, `title.de`, …), führte zu bodylosen Treffern
-# (HTTP 200, aber `total == 0`): Diese Feldnamen sind im realen Mapping nicht
-# als abfragbare Felder vorhanden, und mit `lenient: true` verwirft
-# Elasticsearch alle nicht auflösbaren Klauseln stillschweigend — die Query
-# matcht dann nichts. Daher verlassen wir uns wieder auf das default_field.
+# Feldstruktur des Index (github.com/entscheidsuche/entscheidsuche-feeder,
+# `Model.ts`): `title`, `abstract`, `meta` sind mehrsprachige Objekte
+# (`de`/`fr`/`it`) — daher der Wildcard `*`. Der eigentliche Urteils-Volltext
+# liegt unter `attachment.content` (ingest-attachment-Pipeline). `reference`
+# enthält die Aktenzeichen.
+SEARCH_FIELDS = [
+    "title.*^5",
+    "abstract.*^3",
+    "meta.*^10",
+    "attachment.content",
+    "reference^3",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -107,9 +113,11 @@ def build_search_body(
     # Volltextsuche
     if query:
         must_clauses.append({
-            "simple_query_string": {
+            "query_string": {
                 "query": query,
-                "default_operator": "and",
+                "fields": SEARCH_FIELDS,
+                "default_operator": "AND",
+                "type": "cross_fields",
             }
         })
 
@@ -221,9 +229,10 @@ def build_law_reference_body(
 
     # 1. Exakte Phrase (höchster Boost)
     should_clauses.append({
-        "simple_query_string": {
+        "query_string": {
             "query": f"\"{law_reference}\"",
-            "default_operator": "and",
+            "fields": SEARCH_FIELDS,
+            "default_operator": "AND",
             "boost": 10,
         }
     })
@@ -232,9 +241,11 @@ def build_law_reference_body(
     if parsed["article"] and parsed["law"]:
         # Varianten: "Art. 8" + "BV", "Artikel 8" + "BV", etc.
         should_clauses.append({
-            "simple_query_string": {
+            "query_string": {
                 "query": f"{parsed['article']} {parsed['law']}",
-                "default_operator": "and",
+                "fields": SEARCH_FIELDS,
+                "default_operator": "AND",
+                "type": "cross_fields",
                 "boost": 3,
             }
         })
@@ -242,9 +253,10 @@ def build_law_reference_body(
     # 3. Nur Gesetzeskürzel (niedriger Boost, für Kontext)
     if parsed["law"]:
         should_clauses.append({
-            "simple_query_string": {
+            "query_string": {
                 "query": f"\"{parsed['law']}\"",
-                "default_operator": "and",
+                "fields": SEARCH_FIELDS,
+                "default_operator": "AND",
                 "boost": 1,
             }
         })

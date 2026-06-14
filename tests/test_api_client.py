@@ -25,18 +25,21 @@ class TestBuildSearchBody:
         assert body["size"] == 20
         assert body["from"] == 0
         assert body["sort"] == [{"date": {"order": "desc"}}]
-        assert "simple_query_string" in str(body["query"])
+        assert "query_string" in str(body["query"])
 
-    def test_query_uses_default_field(self):
-        # `simple_query_string` adressiert KEINE expliziten `fields`: explizite
-        # Feldnamen (attachment.content, title.de, …) existieren im realen
-        # Mapping nicht als abfragbare Felder und liefern mit lenient=true
-        # bodylose Treffer (total == 0). Wir nutzen das serverseitige
-        # default_field — so wie die offizielle Suchoberfläche.
+    def test_query_targets_fulltext_fields(self):
+        # Quelle der Wahrheit: offizieller entscheidsuche-mcp-Client. Die Suche
+        # adressiert die Felder EXPLIZIT (Volltext unter `attachment.content`,
+        # mehrsprachige `title.*`/`abstract.*`/`meta.*`) per `query_string` mit
+        # `cross_fields` und `AND`. Auf das default_field zu vertrauen liefert
+        # total == 0.
         body = build_search_body(query="Datenschutz")
-        sqs = body["query"]["bool"]["must"][0]["simple_query_string"]
-        assert "fields" not in sqs
-        assert sqs["default_operator"] == "and"
+        qs = body["query"]["bool"]["must"][0]["query_string"]
+        assert "attachment.content" in qs["fields"]
+        assert "title.*^5" in qs["fields"]
+        assert "meta.*^10" in qs["fields"]
+        assert qs["default_operator"] == "AND"
+        assert qs["type"] == "cross_fields"
 
     def test_match_all_without_query(self):
         body = build_search_body()
@@ -160,9 +163,9 @@ class TestBuildLawReferenceBody:
         # Mindestens 3 Klauseln: exakte Phrase, Nummer+Kürzel, nur Kürzel
         assert len(should) == 3
         # Höchster Boost für exakte Phrase
-        assert should[0]["simple_query_string"]["boost"] == 10
-        assert should[1]["simple_query_string"]["boost"] == 3
-        assert should[2]["simple_query_string"]["boost"] == 1
+        assert should[0]["query_string"]["boost"] == 10
+        assert should[1]["query_string"]["boost"] == 3
+        assert should[2]["query_string"]["boost"] == 1
 
     def test_unparseable_reference(self):
         body = build_law_reference_body("Bundesverfassung")

@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   neither relying on the `default_field` nor the earlier `simple_query_string`
   field guesses (`title.de`, `lenient: true`) matched anything. Affects
   `build_search_body` and `build_law_reference_body`.
+- Switched the search endpoint from the legacy `_search.php` to `_searchV2.php`.
+  `_search.php` proxies to the deprecated `entscheidsuche-*` index, so even a
+  correct query returned `total == 0`; `_searchV2.php` targets the current
+  `entscheidsuche.v2-*` index (same endpoint the official search frontend uses).
+  Search bodies now also set `track_total_hits: true` for accurate hit counts.
 
 ## [0.2.3] - 2026-06-07
 

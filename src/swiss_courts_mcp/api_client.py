@@ -5,7 +5,7 @@ Zentraler API-Client für die Elasticsearch-basierte Suchschnittstelle
 von entscheidsuche.ch (Schweizer Gerichtsentscheide).
 
 Endpunkte:
-  - POST _search.php     → Volltextsuche (Elasticsearch-Body)
+  - POST _searchV2.php   → Volltextsuche (Elasticsearch-Body)
   - GET  /docs/{id}.json → Einzelnes Urteil
   - GET  /docs/Facetten_alle.json → Gerichts-Taxonomie
 """
@@ -25,7 +25,11 @@ log = get_logger(__name__)
 # Konstanten
 # ---------------------------------------------------------------------------
 
-SEARCH_URL = "https://entscheidsuche.ch/_search.php"
+# Aktueller Such-Endpunkt. `_searchV2.php` proxyt auf den aktuellen Index
+# (`entscheidsuche.v2-*`); das ältere `_search.php` zeigt auf den veralteten
+# `entscheidsuche-*`-Index und liefert für die heutigen Feldnamen `total == 0`.
+# Das ist exakt der Endpunkt, den auch die offizielle Suchoberfläche verwendet.
+SEARCH_URL = "https://entscheidsuche.ch/_searchV2.php"
 DOCS_BASE = "https://entscheidsuche.ch/docs"
 FACETS_URL = f"{DOCS_BASE}/Facetten_alle.json"
 
@@ -104,6 +108,8 @@ def build_search_body(
     body: dict = {
         "size": min(size, MAX_SIZE),
         "from": offset,
+        # Ohne track_total_hits deckelt ES die Trefferzahl bei 10'000.
+        "track_total_hits": True,
         "sort": [{"date": {"order": "desc"}}],
     }
 
@@ -221,6 +227,7 @@ def build_law_reference_body(
     body: dict = {
         "size": min(size, MAX_SIZE),
         "from": offset,
+        "track_total_hits": True,
         "sort": [{"_score": {"order": "desc"}}, {"date": {"order": "desc"}}],
     }
 

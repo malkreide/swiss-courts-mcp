@@ -19,11 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   neither relying on the `default_field` nor the earlier `simple_query_string`
   field guesses (`title.de`, `lenient: true`) matched anything. Affects
   `build_search_body` and `build_law_reference_body`.
-- Switched the search endpoint from the legacy `_search.php` to `_searchV2.php`.
-  `_search.php` proxies to the deprecated `entscheidsuche-*` index, so even a
-  correct query returned `total == 0`; `_searchV2.php` targets the current
-  `entscheidsuche.v2-*` index (same endpoint the official search frontend uses).
-  Search bodies now also set `track_total_hits: true` for accurate hit counts.
+- Switched the search endpoint from the legacy `_search.php` to `_searchV2.php`,
+  the current endpoint used by the official search frontend (targets the
+  `entscheidsuche.v2-*` index). Search bodies now also set
+  `track_total_hits: true` for accurate hit counts.
+
+### Tests
+
+- Made the `live` `test_live_search` resilient to a flaky upstream. The live
+  `entscheidsuche.ch` API sporadically returns `HTTP 200` with `total == 0`
+  (a transient backend/shard hiccup that occurred in ~25–30 % of the daily
+  scheduled runs, independent of query form or endpoint — even on identical
+  commits). The test now retries a few times and only fails if every attempt
+  comes back empty, so it no longer red-flags a momentary upstream outage.
 
 ## [0.2.3] - 2026-06-07
 

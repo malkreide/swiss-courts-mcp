@@ -1,5 +1,7 @@
 """Tests für den API-Client (swiss_courts_mcp.api_client)."""
 
+import asyncio
+
 import pytest
 
 from swiss_courts_mcp.api_client import (
@@ -301,14 +303,33 @@ class TestHandleError:
 
 @pytest.mark.live
 async def test_live_search():
-    """Live-Test: Suche nach 'Datenschutz'."""
+    """Live-Test: Suche nach 'Datenschutz'.
+
+    Der Live-Index von entscheidsuche.ch liefert sporadisch HTTP 200 mit
+    ``total == 0`` — ein transienter Upstream-Aussetzer (z.B. eine kurzzeitig
+    leere Replica/Shard), der unabhängig von Query-Form und Endpunkt auftritt
+    (historisch ~25–30 % der täglichen Läufe, auch bei identischem Commit).
+    Wir wiederholen die Suche daher mehrfach und werten den Test nur als
+    Fehlschlag, wenn ALLE Versuche leer bleiben.
+    """
     from swiss_courts_mcp.api_client import search_decisions
     body = build_search_body(query="Datenschutz", size=3)
-    result = await search_decisions(body)
-    total = extract_total(result)
-    assert total > 0
-    hits = result["hits"]["hits"]
-    assert len(hits) > 0
+
+    attempts = 5
+    last_result: dict = {}
+    for i in range(attempts):
+        last_result = await search_decisions(body)
+        if extract_total(last_result) > 0:
+            assert last_result["hits"]["hits"], "total > 0, aber keine hits geliefert"
+            return
+        if i < attempts - 1:
+            await asyncio.sleep(2)
+
+    pytest.fail(
+        f"Live-Suche nach 'Datenschutz' lieferte in {attempts} Versuchen "
+        f"total == 0 (HTTP 200). _shards={last_result.get('_shards')}. "
+        "Deutet auf einen anhaltenden Upstream-Ausfall bei entscheidsuche.ch hin."
+    )
 
 
 @pytest.mark.live

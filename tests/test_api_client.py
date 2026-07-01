@@ -1,6 +1,7 @@
 """Tests für den API-Client (swiss_courts_mcp.api_client)."""
 
 import asyncio
+import json
 
 import pytest
 
@@ -325,10 +326,22 @@ async def test_live_search():
         if i < attempts - 1:
             await asyncio.sleep(2)
 
+    # Diagnose: Ein normaler ES-`_search`-Response enthält immer `_shards` und
+    # `hits`. Fehlen sie, ist der Body kein regulärer ES-Response (Proxy-Fehler,
+    # Rate-Limit-Seite, abweichende Struktur o.Ä.). Wir dumpen daher den echten
+    # Body und sondieren zusätzlich mit `match_all`: liefert match_all Treffer,
+    # ist das Problem query-spezifisch; bleibt auch match_all leer, ist es die
+    # Infrastruktur/der Proxy.
+    def _summary(res: dict) -> str:
+        keys = sorted(res.keys()) if isinstance(res, dict) else type(res).__name__
+        return f"keys={keys} total={extract_total(res)} body={json.dumps(res, ensure_ascii=False)[:1200]}"
+
+    probe = await search_decisions({"size": 3, "query": {"match_all": {}}})
     pytest.fail(
         f"Live-Suche nach 'Datenschutz' lieferte in {attempts} Versuchen "
-        f"total == 0 (HTTP 200). _shards={last_result.get('_shards')}. "
-        "Deutet auf einen anhaltenden Upstream-Ausfall bei entscheidsuche.ch hin."
+        f"total == 0 (HTTP 200).\n"
+        f"Letzte Antwort: {_summary(last_result)}\n"
+        f"match_all-Sonde: {_summary(probe)}"
     )
 
 

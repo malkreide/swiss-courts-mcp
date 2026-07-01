@@ -47,6 +47,15 @@ class EgressNotAllowedError(RuntimeError):
     """Ziel-Host steht nicht auf der Egress-Allow-List."""
 
 
+class UpstreamBlockedError(RuntimeError):
+    """entscheidsuche.ch hat die Anfrage per Bot-Schutz (Imunify360) blockiert.
+
+    Der Bot-Schutz antwortet mit HTTP 200, aber statt eines ES-Bodys mit einem
+    JSON wie ``{"message": "Access denied by Imunify360 bot-protection ..."}``.
+    Betroffen sind v.a. Automations-/Rechenzentrums-IPs (z.B. CI-Runner). Ohne
+    Erkennung läse sich das wie ``total == 0`` (stille Leere)."""
+
+
 def assert_host_allowed(url: str) -> None:
     """Validiert Schema (HTTPS) und Host gegen die Allow-List (SEC-004, SEC-021).
 
@@ -341,13 +350,29 @@ class _TransientClient:
             await self._owned.aclose()
 
 
+def _raise_if_blocked(data: object) -> None:
+    """Erkennt eine Imunify360-Bot-Schutz-Antwort und wirft dann.
+
+    Ein regulärer ES-`_search`-Response enthält immer `hits`. Fehlt `hits` und
+    steht stattdessen eine bot-schutz-typische `message` im Body, ist die
+    Anfrage geblockt worden (HTTP 200) — das darf nicht als leeres Ergebnis
+    durchgehen.
+    """
+    if isinstance(data, dict) and "hits" not in data:
+        message = str(data.get("message", ""))
+        if any(s in message for s in ("Imunify360", "bot-protection", "Access denied")):
+            raise UpstreamBlockedError(message)
+
+
 async def search_decisions(body: dict, client: httpx.AsyncClient | None = None) -> dict:
     """POST-Suche an entscheidsuche.ch mit Elasticsearch-Body."""
     assert_host_allowed(SEARCH_URL)
     async with _TransientClient(client) as http:
         response = await http.post(SEARCH_URL, json=body)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+    _raise_if_blocked(data)
+    return data
 
 
 async def get_decision_by_id(
@@ -445,6 +470,13 @@ def handle_error(e: Exception) -> str:
     if isinstance(e, EgressNotAllowedError):
         log.error("egress_blocked", error=str(e))
         return "Fehler: Ziel-Adresse ist nicht erlaubt (Egress-Policy)."
+    if isinstance(e, UpstreamBlockedError):
+        log.warning("upstream_bot_blocked")
+        return (
+            "Fehler: entscheidsuche.ch hat die Anfrage per Bot-Schutz "
+            "(Imunify360) blockiert. Automatisierte oder Server-/Rechenzentrums-"
+            "IPs müssen dort freigeschaltet werden."
+        )
     if isinstance(e, httpx.HTTPStatusError):
         code = e.response.status_code
         log.warning("upstream_http_error", status_code=code)

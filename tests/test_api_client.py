@@ -3,7 +3,9 @@
 import asyncio
 import json
 
+import httpx
 import pytest
+import respx
 
 from swiss_courts_mcp.api_client import (
     build_id_query,
@@ -296,6 +298,43 @@ class TestHandleError:
         msg = handle_error(httpx.ConnectError("failed"))
         assert "Verbindung" in msg
 
+    def test_bot_blocked_error(self):
+        from swiss_courts_mcp.api_client import UpstreamBlockedError
+        msg = handle_error(UpstreamBlockedError("Access denied by Imunify360"))
+        assert "Bot-Schutz" in msg
+
+
+class TestBotBlockDetection:
+    """Imunify360-Bot-Schutz: HTTP 200, aber kein ES-Body → UpstreamBlockedError."""
+
+    _BLOCK = {
+        "message": (
+            "Access denied by Imunify360 bot-protection. "
+            "IPs used for automation should be whitelisted"
+        )
+    }
+
+    @respx.mock
+    async def test_block_body_raises(self):
+        from swiss_courts_mcp.api_client import (
+            SEARCH_URL,
+            UpstreamBlockedError,
+            search_decisions,
+        )
+        respx.post(SEARCH_URL).mock(
+            return_value=httpx.Response(200, json=self._BLOCK)
+        )
+        with pytest.raises(UpstreamBlockedError):
+            await search_decisions({"query": {"match_all": {}}})
+
+    @respx.mock
+    async def test_normal_empty_response_does_not_raise(self):
+        from swiss_courts_mcp.api_client import SEARCH_URL, search_decisions
+        empty = {"hits": {"total": {"value": 0}, "hits": []}}
+        respx.post(SEARCH_URL).mock(return_value=httpx.Response(200, json=empty))
+        result = await search_decisions({"query": {"match_all": {}}})
+        assert result == empty
+
 
 # ---------------------------------------------------------------------------
 # Live API Tests (optional, mit --run-live)
@@ -306,42 +345,36 @@ class TestHandleError:
 async def test_live_search():
     """Live-Test: Suche nach 'Datenschutz'.
 
-    Der Live-Index von entscheidsuche.ch liefert sporadisch HTTP 200 mit
-    ``total == 0`` — ein transienter Upstream-Aussetzer (z.B. eine kurzzeitig
-    leere Replica/Shard), der unabhängig von Query-Form und Endpunkt auftritt
-    (historisch ~25–30 % der täglichen Läufe, auch bei identischem Commit).
-    Wir wiederholen die Suche daher mehrfach und werten den Test nur als
-    Fehlschlag, wenn ALLE Versuche leer bleiben.
+    entscheidsuche.ch steht hinter Imunify360-Bot-Schutz, der automatisierte /
+    Rechenzentrums-IPs (u.a. CI-Runner) sporadisch blockt: HTTP 200, aber ein
+    Body ``{"message": "Access denied by Imunify360 ..."}`` statt eines
+    Ergebnisses. Das ist eine Umgebungsbedingung (nicht freigeschaltete IP),
+    kein Regressions-Signal — in diesem Fall wird der Test übersprungen. Nur ein
+    echter, leerer ES-Response gilt weiterhin als Fehlschlag.
     """
-    from swiss_courts_mcp.api_client import search_decisions
+    from swiss_courts_mcp.api_client import UpstreamBlockedError, search_decisions
     body = build_search_body(query="Datenschutz", size=3)
 
     attempts = 5
     last_result: dict = {}
     for i in range(attempts):
-        last_result = await search_decisions(body)
+        try:
+            last_result = await search_decisions(body)
+        except UpstreamBlockedError as exc:
+            pytest.skip(
+                "entscheidsuche.ch blockiert automatisierte IPs per Bot-Schutz "
+                f"(Imunify360); IP muss freigeschaltet werden: {exc}"
+            )
         if extract_total(last_result) > 0:
             assert last_result["hits"]["hits"], "total > 0, aber keine hits geliefert"
             return
         if i < attempts - 1:
             await asyncio.sleep(2)
 
-    # Diagnose: Ein normaler ES-`_search`-Response enthält immer `_shards` und
-    # `hits`. Fehlen sie, ist der Body kein regulärer ES-Response (Proxy-Fehler,
-    # Rate-Limit-Seite, abweichende Struktur o.Ä.). Wir dumpen daher den echten
-    # Body und sondieren zusätzlich mit `match_all`: liefert match_all Treffer,
-    # ist das Problem query-spezifisch; bleibt auch match_all leer, ist es die
-    # Infrastruktur/der Proxy.
-    def _summary(res: dict) -> str:
-        keys = sorted(res.keys()) if isinstance(res, dict) else type(res).__name__
-        return f"keys={keys} total={extract_total(res)} body={json.dumps(res, ensure_ascii=False)[:1200]}"
-
-    probe = await search_decisions({"size": 3, "query": {"match_all": {}}})
+    body_dump = json.dumps(last_result, ensure_ascii=False)[:1200]
     pytest.fail(
         f"Live-Suche nach 'Datenschutz' lieferte in {attempts} Versuchen "
-        f"total == 0 (HTTP 200).\n"
-        f"Letzte Antwort: {_summary(last_result)}\n"
-        f"match_all-Sonde: {_summary(probe)}"
+        f"total == 0 (HTTP 200), Body: {body_dump}"
     )
 
 

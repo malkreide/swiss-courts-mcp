@@ -23,15 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the current endpoint used by the official search frontend (targets the
   `entscheidsuche.v2-*` index). Search bodies now also set
   `track_total_hits: true` for accurate hit counts.
+- Detect the Imunify360 bot-protection response and raise `UpstreamBlockedError`
+  instead of silently returning zero hits. entscheidsuche.ch sits behind
+  Imunify360, which answers automated / datacenter IPs with `HTTP 200` and a
+  body like `{"message": "Access denied by Imunify360 bot-protection ..."}`
+  (no `hits`). `search_decisions` now surfaces this as a clear error
+  ("blocked by bot-protection; the IP must be whitelisted") via `handle_error`,
+  so a blocked client no longer sees an empty result set with no explanation.
 
 ### Tests
 
-- Made the `live` `test_live_search` resilient to a flaky upstream. The live
-  `entscheidsuche.ch` API sporadically returns `HTTP 200` with `total == 0`
-  (a transient backend/shard hiccup that occurred in ~25–30 % of the daily
-  scheduled runs, independent of query form or endpoint — even on identical
-  commits). The test now retries a few times and only fails if every attempt
-  comes back empty, so it no longer red-flags a momentary upstream outage.
+- The `live` `test_live_search` now **skips** (instead of failing) when the
+  request is blocked by Imunify360 bot-protection — an environmental condition
+  (the CI runner's IP is not whitelisted), not a regression. This was the true
+  cause of the long-standing intermittent `total == 0` failures (~25–30 % of
+  daily runs, independent of query form or endpoint). A genuinely empty ES
+  response still fails the test.
 
 ## [0.2.3] - 2026-06-07
 

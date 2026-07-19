@@ -46,15 +46,18 @@ async def test_search_success_text_and_structured(ctx):
     md = text(res)
     assert "Testurteil" in md
     assert "Treffer-Typ:** exact" in md
-    # SDK-002: konsistenter Envelope.
+    # SDK-002: konsistenter Envelope. Provenance: source = Abruf-Pfad (live|dump).
     env = sc(res)
-    assert env["source"] == "entscheidsuche.ch"
+    assert env["source"] == "live"
+    assert env["dataset"] == "entscheidsuche.ch"
     assert env["license"]  # CH-004
+    assert env["coverage_note"] is None  # live → keine Abdeckungswarnung
     assert env["match_type"] == "exact"
     assert env["count"] == 1
     assert env["total"] == 1
     assert env["results"][0]["signature"] == "CH_BGer_005_test_2025-01-01"
-    assert env["results"][0]["provenance"]["source"] == "entscheidsuche.ch"
+    assert env["results"][0]["provenance"]["source"] == "live"
+    assert env["results"][0]["provenance"]["dataset"] == "entscheidsuche.ch"
 
 
 @respx.mock
@@ -67,7 +70,9 @@ async def test_search_empty_reports_match_type_none(ctx):
 
 
 @respx.mock
-async def test_search_upstream_error_raises_masked_toolerror(ctx):
+async def test_search_upstream_error_raises_masked_toolerror(ctx, monkeypatch):
+    # Fallback deaktiviert: der Live-Upstream-Fehler wird maskiert durchgereicht.
+    monkeypatch.setenv("SWISS_COURTS_FALLBACK_ENABLED", "0")
     respx.post(SEARCH_URL).mock(return_value=httpx.Response(503))
     with pytest.raises(ToolError) as exc:
         await server.search_court_decisions(SearchDecisionsInput(query="xx"), ctx)

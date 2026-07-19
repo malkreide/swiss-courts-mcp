@@ -29,3 +29,13 @@ htmlcov/
 .idea/
 .vscode/
 .DS_Store
+
+# Offline-Dump-Cache — NIEMALS heruntergeladene Datendateien committen (Phase 3).
+# Der SCD-Dump (~120 MB CSV) landet im platformdirs-Cache, nicht im Repo.
+*.sqlite
+*.sqlite-journal
+*.sqlite.tmp
+scd-*.csv
+scd-*.parquet
+scd-*.meta.json
+.swiss_courts_cache/

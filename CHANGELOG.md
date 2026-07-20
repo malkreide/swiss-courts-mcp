@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0]
+
+### Added
+
+- **Offline fallback via the SCD Zenodo dump.** When entscheidsuche.ch is
+  unreachable (Imunify360 bot-block, HTTP 5xx/429, timeout, connect error), the
+  search-style tools now fall back to the **Swiss Federal Supreme Court Dataset
+  (SCD)** (Zenodo `10.5281/zenodo.14867950`, Version 2024-3, CC BY 4.0). The
+  ~120 MB CSV (metadata/regesten, **no full text**) is downloaded lazily into a
+  `platformdirs` cache on first need and searched locally via SQLite (`fallback`
+  module, fully separate from the live client).
+- **Provenance on every response.** All response models now carry
+  `source: Literal["live","dump"]`; dump responses additionally carry a
+  `coverage_note`. The former `source` field (data-provider name) was renamed to
+  `dataset`, and `attribution` was added (CC-BY citation shipped in the tool
+  output, not just the README).
+- **New tool `get_fallback_status`** (`readOnlyHint`) for transparency over the
+  offline cache state, dataset version, coverage, and pre-warming. Optional
+  `check_updates` queries the Zenodo versions API. Tool budget: 7 → 8.
+- Configuration via env: `SWISS_COURTS_FORCE_DUMP=1` (force the dump path, e.g.
+  for pre-warming/tests), `SWISS_COURTS_FALLBACK_ENABLED=0` (disable the
+  fallback), `SWISS_COURTS_CACHE_DIR`, `SWISS_COURTS_DUMP_RECORD`.
+
+### Known findings (from the Phase 1 live probe, 2026-07-19)
+
+- The offline fallback is **partial, not equivalent**: SCD covers only the
+  Federal Supreme Court (BGer/BGE), 2007–2024, ~16 % of what entscheidsuche.ch
+  indexes. Cantonal / BVGer / BStGer queries in dump mode return an explicit
+  "not covered" answer, never a silent empty result.
+- The second candidate dataset (Zenodo `5529712`, "SwissJudgmentPrediction")
+  was **rejected**: its licence is CC BY-**NC-SA** 4.0 (NonCommercial +
+  ShareAlike), incompatible with this MIT project.
+- SCD case identifiers (`docref`, e.g. `1C_517/2016`) differ from
+  entscheidsuche signatures (`CH_BGer_005_…`); `get_court_decision` in dump mode
+  is therefore best-effort and honest about non-resolvable lookups.
+
 ### Fixed
 
 - Full-text search returned no results (HTTP 200 but `total == 0`) for ordinary

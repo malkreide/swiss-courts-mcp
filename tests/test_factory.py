@@ -40,7 +40,7 @@ async def test_all_tools_registered():
     assert names == {
         "search_court_decisions", "get_court_decision", "search_bger_decisions",
         "search_by_law_reference", "list_courts", "get_recent_decisions",
-        "get_decision_statistics",
+        "get_decision_statistics", "get_fallback_status",
     }
     # ARCH-008: zweites Primitiv (Prompt) vorhanden.
     prompts = await mcp.list_prompts()

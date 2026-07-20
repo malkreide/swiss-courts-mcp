@@ -29,13 +29,19 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, ConfigDict, Field
 
-from swiss_courts_mcp import api_client
+from swiss_courts_mcp import api_client, fallback
 from swiss_courts_mcp.config import Settings
 from swiss_courts_mcp.logging_config import configure_logging, get_logger
 from swiss_courts_mcp.models import (
+    DATA_ATTRIBUTION,
     DATA_LICENSE,
     DATA_SOURCE,
     DATA_SOURCE_URL,
+    DUMP_ATTRIBUTION,
+    DUMP_DATASET,
+    DUMP_LICENSE,
+    DUMP_PROVENANCE,
+    LIVE_PROVENANCE,
     DecisionResult,
     SearchResponse,
 )
@@ -58,6 +64,13 @@ PROTOCOL_VERSION = "2025-11-25"
 SOURCE_FOOTER = (
     f"\n---\n*Quelle: {DATA_SOURCE} ({DATA_SOURCE_URL}) · "
     f"Lizenz: {DATA_LICENSE}*"
+)
+
+# Footer für Offline-Fallback-Antworten. CC-BY-Attribution wird im Tool-Output
+# mitgeliefert (nicht nur im README) — sonst geht sie beim Weiterreichen verloren.
+DUMP_FOOTER = (
+    f"\n\n---\n*Offline-Fallback · Quelle: {DUMP_DATASET} · Lizenz: {DUMP_LICENSE} · "
+    f"{DUMP_ATTRIBUTION}*"
 )
 
 # ---------------------------------------------------------------------------
@@ -260,6 +273,17 @@ class DecisionStatsInput(BaseModel):
     )
 
 
+class FallbackStatusInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    check_updates: bool = Field(
+        default=False,
+        description=(
+            "Optional: bei Zenodo prüfen, ob eine neuere SCD-Dump-Version vorliegt "
+            "(ein einzelner Metadaten-Request, kein Download). Default: aus."
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Context-Helfer (SDK-003)
 # ---------------------------------------------------------------------------
@@ -324,7 +348,9 @@ def format_hit(hit: dict, idx: int) -> str:
     return "\n".join(lines)
 
 
-def format_decision_detail(hit: dict) -> str:
+def format_decision_detail(
+    hit: dict, *, dataset: str = DATA_SOURCE, license: str = DATA_LICENSE
+) -> str:
     """Formatiert einen einzelnen Entscheid als detaillierte Markdown-Ansicht."""
     refs = ", ".join(hit["references"]) if hit["references"] else "—"
     lines = [
@@ -339,7 +365,7 @@ def format_decision_detail(hit: dict) -> str:
         f"| **Signatur** | `{hit['signature']}` |",
         f"| **Sprache** | {hit['language']} |",
         f"| **Volltext** | [Link]({hit['url']}) |",
-        f"| **Quelle / Lizenz** | {DATA_SOURCE} — {DATA_LICENSE} |",
+        f"| **Quelle / Lizenz** | {dataset} — {license} |",
     ]
     if hit["title"]:
         lines.extend(["", "### Titel", hit["title"]])
@@ -356,15 +382,215 @@ def result_header(count: int, total: int, desc: str, match_type: str | None = No
     return f"## {desc}\n**Treffer:** {total}{mt}\n"
 
 
-def _build_response(query: str, total: int, hits: list[dict]) -> SearchResponse:
-    """Baut den strukturierten Such-Envelope (SDK-002)."""
+def _build_response(
+    query: str,
+    total: int,
+    hits: list[dict],
+    *,
+    source: str = "live",
+    coverage_note: str | None = None,
+) -> SearchResponse:
+    """Baut den strukturierten Such-Envelope (SDK-002).
+
+    ``source`` deklariert den Abruf-Pfad (live | dump). Bei ``dump`` werden
+    Dataset/Lizenz/Attribution auf den SCD-Dump umgestellt und die Provenance
+    jedes Treffers entsprechend gesetzt (Governance: keine stille Reduktion).
+    """
+    if source == "dump":
+        dataset, lic, attr, prov = DUMP_DATASET, DUMP_LICENSE, DUMP_ATTRIBUTION, DUMP_PROVENANCE
+    else:
+        dataset, lic, attr, prov = DATA_SOURCE, DATA_LICENSE, DATA_ATTRIBUTION, LIVE_PROVENANCE
     return SearchResponse(
+        source=source,  # type: ignore[arg-type]
+        dataset=dataset,
+        license=lic,
+        attribution=attr,
+        coverage_note=coverage_note,
         query=query,
         match_type=_match_type(total),  # type: ignore[arg-type]
         count=len(hits),
         total=total,
-        results=[DecisionResult(**h) for h in hits],
+        results=[DecisionResult(**h, provenance=prov) for h in hits],
     )
+
+
+def _live_meta() -> dict:
+    """Provenance-Block für die Nicht-Such-Tools (live)."""
+    return {
+        "source": "live",
+        "dataset": DATA_SOURCE,
+        "license": DATA_LICENSE,
+        "attribution": DATA_ATTRIBUTION,
+    }
+
+
+def _dump_meta() -> dict:
+    """Provenance-Block für die Nicht-Such-Tools (dump)."""
+    return {
+        "source": "dump",
+        "dataset": DUMP_DATASET,
+        "license": DUMP_LICENSE,
+        "attribution": DUMP_ATTRIBUTION,
+        "coverage_note": fallback.COVERAGE_NOTE,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Fallback-Orchestrierung (Trigger, Rendering, Graceful Degradation)
+# ---------------------------------------------------------------------------
+
+
+class _ForceDump(Exception):
+    """Sentinel: der Dump-Pfad wurde per ENV erzwungen (kein Live-Versuch)."""
+
+
+def _should_fallback(exc: Exception) -> bool:
+    """Ob ``exc`` aus dem Live-Pfad einen Fallback auslösen soll.
+
+    Trigger: Bot-Block, HTTP 5xx/429, Timeout/Connect-/Netzwerkfehler.
+    NICHT: 4xx (ausser 429), Egress-Policy — die sind kein Verfügbarkeitsproblem.
+    """
+    if isinstance(exc, api_client.UpstreamBlockedError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        return code >= 500 or code == 429
+    if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.RequestError)):
+        return True
+    return False
+
+
+def _both_unavailable(live_exc: Exception, dump_exc: Exception) -> str:
+    """Handlungsleitende Meldung, wenn weder Live noch Dump verfügbar sind."""
+    return (
+        "Weder die Live-Quelle (entscheidsuche.ch) noch der Offline-Dump "
+        f"(SCD/Zenodo) sind aktuell verfügbar. {dump_exc} "
+        "Bitte in einigen Minuten erneut versuchen."
+    )
+
+
+def _dump_banner(note: str) -> str:
+    return f"> ⚠️ **Offline-Modus (Fallback aktiv).** {note}"
+
+
+def _render_dump_search(dump: fallback.DumpResult, *, query: str, desc: str) -> CallToolResult:
+    """Rendert ein Dump-Suchergebnis (Markdown + Envelope mit source='dump')."""
+    envelope = _build_response(
+        query, dump.total, dump.hits, source="dump", coverage_note=dump.note
+    )
+    banner = _dump_banner(dump.note)
+    if dump.total == 0 or not dump.hits:
+        reason = "im Offline-Dump nicht abgedeckt" if dump.out_of_coverage else "keine Treffer im Offline-Dump"
+        md = f"{banner}\n\n## {desc}\n**{reason}** (Treffer-Typ: none)."
+        return _result(md + DUMP_FOOTER, envelope)
+    parts = [
+        banner,
+        result_header(envelope.count, dump.total, desc, match_type=envelope.match_type),
+    ]
+    for i, hit in enumerate(dump.hits, 1):
+        parts.append(format_hit(hit, i))
+    return _result("\n\n".join(parts) + DUMP_FOOTER, envelope)
+
+
+async def _fallback_or_raise(
+    ctx: Context, exc: Exception, *, dump_factory, query: str, desc: str
+) -> CallToolResult:
+    """Gemeinsamer Fallback-Entscheid für die such-artigen Tools.
+
+    ``dump_factory`` ist eine 0-arg Coroutine-Fabrik → erst bei tatsächlichem
+    Bedarf ausgeführt (kein hängender Coroutine-Warnhinweis).
+    """
+    if not isinstance(exc, _ForceDump):
+        if isinstance(exc, ToolError):
+            raise exc
+        if not (fallback.fallback_enabled() and _should_fallback(exc)):
+            raise ToolError(api_client.handle_error(exc)) from None
+        await _info(ctx, "fallback_triggered", reason=type(exc).__name__)
+    try:
+        dump = await dump_factory()
+    except fallback.FallbackUnavailableError as fe:
+        raise ToolError(_both_unavailable(exc, fe)) from None
+    except Exception as fe:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(fe)) from None
+    return _render_dump_search(dump, query=query, desc=desc)
+
+
+async def _get_decision_fallback(
+    ctx: Context, exc: Exception, *, signature: str, language: str
+) -> CallToolResult:
+    """Fallback für den Einzel-Lookup (get_court_decision)."""
+    if not isinstance(exc, _ForceDump):
+        if isinstance(exc, ToolError):
+            raise exc
+        if not (fallback.fallback_enabled() and _should_fallback(exc)):
+            raise ToolError(api_client.handle_error(exc)) from None
+        await _info(ctx, "fallback_triggered", reason=type(exc).__name__)
+    try:
+        hit = await fallback.get_decision_dump(signature=signature, client=_client(ctx))
+    except fallback.FallbackUnavailableError as fe:
+        raise ToolError(_both_unavailable(exc, fe)) from None
+    except Exception as fe:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(fe)) from None
+    banner = _dump_banner(fallback.COVERAGE_NOTE)
+    if not hit:
+        md = (
+            f"{banner}\n\nEntscheid `{signature}` im Offline-Dump nicht auflösbar "
+            "(Treffer-Typ: none). Der SCD-Dump indexiert nach BGer-Aktenzeichen "
+            "(z.B. `1C_517/2016`); entscheidsuche-Signaturen sind offline nicht "
+            "immer zuordenbar."
+        )
+        return _result(md + DUMP_FOOTER, {**_dump_meta(), "match_type": "none", "decision": None})
+    decision = DecisionResult(**hit, provenance=DUMP_PROVENANCE)
+    detail = format_decision_detail(hit, dataset=DUMP_DATASET, license=DUMP_LICENSE)
+    return _result(
+        f"{banner}\n\n{detail}" + DUMP_FOOTER,
+        {**_dump_meta(), "match_type": "exact", "decision": decision.model_dump(mode="json")},
+    )
+
+
+async def _statistics_fallback(
+    ctx: Context, exc: Exception, *, canton: str | None, year: int | None
+) -> CallToolResult:
+    """Fallback für get_decision_statistics (aus dem lokalen Dump)."""
+    if not isinstance(exc, _ForceDump):
+        if isinstance(exc, ToolError):
+            raise exc
+        if not (fallback.fallback_enabled() and _should_fallback(exc)):
+            raise ToolError(api_client.handle_error(exc)) from None
+        await _info(ctx, "fallback_triggered", reason=type(exc).__name__)
+    try:
+        data = await fallback.statistics_dump(canton=canton, year=year, client=_client(ctx))
+    except fallback.FallbackUnavailableError as fe:
+        raise ToolError(_both_unavailable(exc, fe)) from None
+    except Exception as fe:  # noqa: BLE001
+        raise ToolError(api_client.handle_error(fe)) from None
+    note = data.get("note", fallback.COVERAGE_NOTE)
+    banner = _dump_banner(note)
+    if data.get("out_of_coverage"):
+        md = f"{banner}\n\n## Entscheid-Statistiken\n**nicht abgedeckt** — {note}"
+        return _result(
+            md + DUMP_FOOTER,
+            {**_dump_meta(), "total": 0, "by_canton": [], "by_year": [], "by_area": []},
+        )
+    total = data["total"]
+    lines = [banner, "", "## Entscheid-Statistiken (Offline-Dump)", "",
+             f"**Gesamtzahl (BGer):** {total:,} Entscheide"]
+    if year:
+        lines.append(f"**Filter:** Jahr {year}")
+    by_year = data["by_year"]
+    if by_year:
+        lines.extend(["", "### Nach Jahr", "", "| Jahr | Anzahl |", "|------|--------|"])
+        for b in by_year[:20]:
+            lines.append(f"| {b['year']} | {b['count']:,} |")
+    by_area = data["by_area"]
+    if by_area:
+        lines.extend(["", "### Nach Rechtsgebiet", "", "| Rechtsgebiet | Anzahl |",
+                      "|--------------|--------|"])
+        for b in by_area[:10]:
+            lines.append(f"| {b['key']} | {b['count']:,} |")
+    return _result("\n".join(lines) + DUMP_FOOTER, {
+        **_dump_meta(), "total": total, "by_canton": [], "by_year": by_year, "by_area": by_area,
+    })
 
 
 def _result(markdown: str, structured: BaseModel | dict) -> CallToolResult:
@@ -393,7 +619,10 @@ async def search_court_decisions(params: SearchDecisionsInput, ctx: Context) -> 
     Response-Envelope (source, license, match_type, count, total, results).
     """
     await _progress(ctx, 0, 1)
+    desc = f"Gerichtsentscheide: «{params.query}»"
     try:
+        if fallback.force_dump():
+            raise _ForceDump()
         body = api_client.build_search_body(
             query=params.query,
             canton=params.canton.value if params.canton else None,
@@ -421,15 +650,26 @@ async def search_court_decisions(params: SearchDecisionsInput, ctx: Context) -> 
         ]
         envelope = _build_response(params.query, total, hits)
         parts = [result_header(
-            envelope.count, total, f"Gerichtsentscheide: «{params.query}»",
+            envelope.count, total, desc,
             match_type=envelope.match_type,
         )]
         for i, hit in enumerate(hits, 1):
             parts.append(format_hit(hit, i))
         return _result("\n\n".join(parts) + SOURCE_FOOTER, envelope)
 
-    except Exception as e:  # noqa: BLE001 — wird maskiert + als isError gemeldet
-        raise ToolError(api_client.handle_error(e)) from None
+    except Exception as e:  # noqa: BLE001 — wird maskiert; Trigger → Fallback (Phase 3)
+        return await _fallback_or_raise(
+            ctx, e, query=params.query, desc=desc,
+            dump_factory=lambda: fallback.search_dump(
+                query=params.query,
+                canton=params.canton.value if params.canton else None,
+                court_level=params.court_level.value if params.court_level else None,
+                date_from=params.date_from,
+                date_to=params.date_to,
+                limit=params.limit,
+                client=_client(ctx),
+            ),
+        )
 
 
 async def get_court_decision(params: GetDecisionInput, ctx: Context) -> CallToolResult:
@@ -439,26 +679,27 @@ async def get_court_decision(params: GetDecisionInput, ctx: Context) -> CallTool
     search_court_decisions). Exakter Lookup ohne Fuzzy-Fallback.
     """
     try:
+        if fallback.force_dump():
+            raise _ForceDump()
         hit_raw = await api_client.get_decision_by_id(params.signature, client=_client(ctx))
         if not hit_raw:
             md = (
                 f"Entscheid nicht gefunden: `{params.signature}` (Treffer-Typ: none)\n\n"
                 "Bitte Signatur prüfen."
             ) + SOURCE_FOOTER
-            return _result(md, {
-                "source": DATA_SOURCE, "license": DATA_LICENSE,
-                "match_type": "none", "decision": None,
-            })
+            return _result(md, {**_live_meta(), "match_type": "none", "decision": None})
 
         hit = api_client.extract_hit(hit_raw, params.language.value)
         decision = DecisionResult(**hit)
         return _result(format_decision_detail(hit) + SOURCE_FOOTER, {
-            "source": DATA_SOURCE, "license": DATA_LICENSE,
-            "match_type": "exact", "decision": decision.model_dump(mode="json"),
+            **_live_meta(), "match_type": "exact",
+            "decision": decision.model_dump(mode="json"),
         })
 
     except Exception as e:  # noqa: BLE001
-        raise ToolError(api_client.handle_error(e)) from None
+        return await _get_decision_fallback(
+            ctx, e, signature=params.signature, language=params.language.value
+        )
 
 
 async def search_bger_decisions(params: SearchBGerInput, ctx: Context) -> CallToolResult:
@@ -467,7 +708,10 @@ async def search_bger_decisions(params: SearchBGerInput, ctx: Context) -> CallTo
     Use-Case: höchstrichterliche Rechtsprechung mit optionalem Abteilungsfilter.
     """
     await _progress(ctx, 0, 1)
+    desc = f"Bundesgericht: «{params.query}»"
     try:
+        if fallback.force_dump():
+            raise _ForceDump()
         prefixes = ["CH_BGer", "CH_BGE"]
         query = params.query
         if params.chamber:
@@ -497,7 +741,7 @@ async def search_bger_decisions(params: SearchBGerInput, ctx: Context) -> CallTo
         ]
         envelope = _build_response(params.query, total, hits)
         parts = [result_header(
-            envelope.count, total, f"Bundesgericht: «{params.query}»",
+            envelope.count, total, desc,
             match_type=envelope.match_type,
         )]
         for i, hit in enumerate(hits, 1):
@@ -505,7 +749,17 @@ async def search_bger_decisions(params: SearchBGerInput, ctx: Context) -> CallTo
         return _result("\n\n".join(parts) + SOURCE_FOOTER, envelope)
 
     except Exception as e:  # noqa: BLE001
-        raise ToolError(api_client.handle_error(e)) from None
+        return await _fallback_or_raise(
+            ctx, e, query=params.query, desc=desc,
+            dump_factory=lambda: fallback.search_bger_dump(
+                query=params.query,
+                chamber=params.chamber,
+                date_from=params.date_from,
+                date_to=params.date_to,
+                limit=params.limit,
+                client=_client(ctx),
+            ),
+        )
 
 
 async def search_by_law_reference(params: SearchByLawInput, ctx: Context) -> CallToolResult:
@@ -517,7 +771,10 @@ async def search_by_law_reference(params: SearchByLawInput, ctx: Context) -> Cal
     Beispiele: 'Art. 8 BV', 'Art. 328 OR', 'Art. 25 DSG'.
     """
     await _progress(ctx, 0, 1)
+    desc = f"Rechtsprechung zu {params.law_reference}"
     try:
+        if fallback.force_dump():
+            raise _ForceDump()
         body = api_client.build_law_reference_body(
             law_reference=params.law_reference,
             date_from=params.date_from,
@@ -545,7 +802,7 @@ async def search_by_law_reference(params: SearchByLawInput, ctx: Context) -> Cal
         ]
         envelope = _build_response(params.law_reference, total, hits)
         parts = [result_header(
-            envelope.count, total, f"Rechtsprechung zu {params.law_reference}",
+            envelope.count, total, desc,
             match_type=envelope.match_type,
         )]
         for i, hit in enumerate(hits, 1):
@@ -553,7 +810,16 @@ async def search_by_law_reference(params: SearchByLawInput, ctx: Context) -> Cal
         return _result("\n\n".join(parts) + SOURCE_FOOTER, envelope)
 
     except Exception as e:  # noqa: BLE001
-        raise ToolError(api_client.handle_error(e)) from None
+        return await _fallback_or_raise(
+            ctx, e, query=params.law_reference, desc=desc,
+            dump_factory=lambda: fallback.search_by_law_dump(
+                law_reference=params.law_reference,
+                date_from=params.date_from,
+                date_to=params.date_to,
+                limit=params.limit,
+                client=_client(ctx),
+            ),
+        )
 
 
 async def list_courts(params: ListCourtsInput, ctx: Context) -> CallToolResult:
@@ -580,8 +846,7 @@ async def list_courts(params: ListCourtsInput, ctx: Context) -> CallToolResult:
             if not filtered:
                 return _result(
                     f"Keine Gerichte gefunden für Kanton: {params.canton}" + SOURCE_FOOTER,
-                    {"source": DATA_SOURCE, "license": DATA_LICENSE,
-                     "type": "court_taxonomy", "count": 0, "courts": []},
+                    {**_live_meta(), "type": "court_taxonomy", "count": 0, "courts": []},
                 )
 
             court_keys = sorted(filtered.keys())
@@ -624,7 +889,7 @@ async def list_courts(params: ListCourtsInput, ctx: Context) -> CallToolResult:
                     lines.append(f"- **{canton_code}**: {name}")
 
         return _result("\n".join(lines) + SOURCE_FOOTER, {
-            "source": DATA_SOURCE, "license": DATA_LICENSE,
+            **_live_meta(),
             "type": "court_taxonomy", "count": len(court_keys), "courts": court_keys,
         })
 
@@ -638,7 +903,20 @@ async def get_recent_decisions(params: RecentDecisionsInput, ctx: Context) -> Ca
     Use-Case: aktuelle Rechtsprechungsentwicklungen verfolgen. Chronologisch
     sortiert, filterbar nach Kanton und Gerichtsebene.
     """
+    desc = "Neueste Gerichtsentscheide"
+    if params.canton:
+        desc += f" — Kanton {params.canton.value}"
+    if params.court_level:
+        level_names = {
+            "bundesgericht": "Bundesgericht",
+            "bundesverwaltungsgericht": "Bundesverwaltungsgericht",
+            "bundesstrafgericht": "Bundesstrafgericht",
+            "bundespatentgericht": "Bundespatentgericht",
+        }
+        desc += f" — {level_names.get(params.court_level.value, params.court_level.value)}"
     try:
+        if fallback.force_dump():
+            raise _ForceDump()
         body = api_client.build_search_body(
             canton=params.canton.value if params.canton else None,
             court_level=params.court_level.value if params.court_level else None,
@@ -658,18 +936,6 @@ async def get_recent_decisions(params: RecentDecisionsInput, ctx: Context) -> Ca
             for h in result.get("hits", {}).get("hits", [])
         ]
 
-        desc = "Neueste Gerichtsentscheide"
-        if params.canton:
-            desc += f" — Kanton {params.canton.value}"
-        if params.court_level:
-            level_names = {
-                "bundesgericht": "Bundesgericht",
-                "bundesverwaltungsgericht": "Bundesverwaltungsgericht",
-                "bundesstrafgericht": "Bundesstrafgericht",
-                "bundespatentgericht": "Bundespatentgericht",
-            }
-            desc += f" — {level_names.get(params.court_level.value, params.court_level.value)}"
-
         envelope = _build_response("", total, hits)
         parts = [result_header(envelope.count, total, desc, match_type=envelope.match_type)]
         for i, hit in enumerate(hits, 1):
@@ -677,7 +943,15 @@ async def get_recent_decisions(params: RecentDecisionsInput, ctx: Context) -> Ca
         return _result("\n\n".join(parts) + SOURCE_FOOTER, envelope)
 
     except Exception as e:  # noqa: BLE001
-        raise ToolError(api_client.handle_error(e)) from None
+        return await _fallback_or_raise(
+            ctx, e, query="", desc=desc,
+            dump_factory=lambda: fallback.recent_dump(
+                canton=params.canton.value if params.canton else None,
+                court_level=params.court_level.value if params.court_level else None,
+                limit=params.limit,
+                client=_client(ctx),
+            ),
+        )
 
 
 async def get_decision_statistics(params: DecisionStatsInput, ctx: Context) -> CallToolResult:
@@ -686,6 +960,8 @@ async def get_decision_statistics(params: DecisionStatsInput, ctx: Context) -> C
     Use-Case: Mengengerüst und Verteilung nach Kanton/Jahr.
     """
     try:
+        if fallback.force_dump():
+            raise _ForceDump()
         body: dict = {
             "size": 0,
             "aggs": {
@@ -743,12 +1019,70 @@ async def get_decision_statistics(params: DecisionStatsInput, ctx: Context) -> C
                 lines.append(f"| {year_val} | {cnt:,} |")
 
         return _result("\n".join(lines) + SOURCE_FOOTER, {
-            "source": DATA_SOURCE, "license": DATA_LICENSE,
+            **_live_meta(),
             "total": total, "by_canton": by_canton, "by_year": by_year,
         })
 
     except Exception as e:  # noqa: BLE001
-        raise ToolError(api_client.handle_error(e)) from None
+        return await _statistics_fallback(
+            ctx, e,
+            canton=params.canton.value if params.canton else None,
+            year=params.year,
+        )
+
+
+async def get_fallback_status(params: FallbackStatusInput, ctx: Context) -> CallToolResult:
+    """Zeigt Zustand und Abdeckung des Offline-Fallbacks (SCD-Dump).
+
+    Use-Case: Transparenz — ist der lokale Dump-Cache vorhanden, welche Version,
+    was deckt er ab (nur Bundesgericht 2007–2024, kein Volltext) und wie erzwingt
+    man ihn (ENV ``SWISS_COURTS_FORCE_DUMP=1``). Read-only; lädt selbst NICHTS
+    herunter. ``check_updates=True`` fragt optional die Zenodo-Versions-API ab.
+    """
+    st = fallback.status(client=_client(ctx))
+    update: dict | None = None
+    if params.check_updates:
+        try:
+            update = await fallback.latest_version(client=_client(ctx))
+        except Exception:  # noqa: BLE001 — Update-Check ist best-effort
+            update = {"error": True}
+
+    ready = st["ready"]
+    rows_line = f"- **Datensätze im Cache:** {st['rows']:,}" if ready else "- **Datensätze im Cache:** —"
+    lines = [
+        "## Offline-Fallback: Status",
+        "",
+        f"- **Cache bereit:** {'ja' if ready else 'nein'}",
+        f"- **Datensatz:** {st['dataset']}",
+        f"- **Lizenz:** {st['license']}",
+        f"- **Record / Version:** {st['record_id']} / {st['version'] or '—'}",
+        rows_line,
+        f"- **Cache-Verzeichnis:** `{st['cache_dir']}`",
+        f"- **Fallback aktiviert:** {'ja' if st['fallback_enabled'] else 'nein'}",
+        f"- **Dump erzwungen (FORCE_DUMP):** {'ja' if st['force_dump'] else 'nein'}",
+        "",
+        "### Abdeckung",
+        st["coverage"],
+        "",
+        "### Vorwärmen",
+        "Cache proaktiv füllen: `SWISS_COURTS_FORCE_DUMP=1` setzen und eine Suche "
+        "ausführen (lädt den ~120-MB-SCD-CSV einmalig).",
+    ]
+    if update is not None:
+        lines.extend(["", "### Update-Prüfung"])
+        if update.get("error"):
+            lines.append("Update-Prüfung fehlgeschlagen (Zenodo nicht erreichbar).")
+        else:
+            avail = update.get("update_available")
+            lines.append(
+                f"Neueste Version: {update.get('latest_version') or '—'} "
+                f"(Record {update.get('latest_record')}). "
+                + ("**Update verfügbar.**" if avail else "Aktuell.")
+            )
+    structured: dict = {**_dump_meta(), "status": st}
+    if update is not None:
+        structured["update"] = update
+    return _result("\n".join(lines) + DUMP_FOOTER, structured)
 
 
 # Annotations-Übersicht (ARCH-009) — alle Tools sind read-only, idempotent,
@@ -768,6 +1102,7 @@ _TOOLS = [
     (list_courts, "list_courts", "Verfügbare Gerichte auflisten"),
     (get_recent_decisions, "get_recent_decisions", "Neueste Gerichtsentscheide"),
     (get_decision_statistics, "get_decision_statistics", "Entscheid-Statistiken"),
+    (get_fallback_status, "get_fallback_status", "Offline-Fallback-Status"),
 ]
 
 

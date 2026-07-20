@@ -4,7 +4,7 @@
 
 # 🏛️ swiss-courts-mcp
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
@@ -23,11 +23,16 @@
 
 Zugriff auf Schweizer Gerichtsentscheide aller Instanzen über eine einzige MCP-Schnittstelle. Kombiniert Volltextsuche mit strukturierten Filtern nach Kanton, Gerichtsebene, Datumsbereich und Gesetzesreferenzen.
 
+**🎯 Anker-Demo-Query:** *«Finde Bundesgerichts-Rechtsprechung zum Datenschutz (Art. 25 DSG) seit 2020 — und wenn entscheidsuche.ch ausfällt, antworte trotzdem aus dem Offline-Dump, klar gekennzeichnet.»*
+
 | Quelle | Abdeckung | Daten |
 |--------|-----------|-------|
-| [entscheidsuche.ch](https://entscheidsuche.ch) | Bund + 26 Kantone | Gerichtsentscheide seit ca. 2000 |
+| [entscheidsuche.ch](https://entscheidsuche.ch) (live, Default) | Bund + 26 Kantone | Gerichtsentscheide seit ca. 2000 |
+| [SCD-Dump](https://doi.org/10.5281/zenodo.14867950) (Offline-Fallback) | **nur Bundesgericht, 2007–2024** | Metadaten/Regesten, **kein Volltext** |
 
 **Synergie mit [fedlex-mcp](https://github.com/malkreide/fedlex-mcp):** Gesetzestext (SR) + Rechtsprechung = vollständige Rechtsrecherche.
+
+**Verfügbarkeit:** entscheidsuche.ch ist Non-Profit-Infrastruktur ohne SLA. Fällt sie aus, weicht der Server transparent auf einen gecachten öffentlichen Dump aus (siehe [Offline-Fallback](#offline-fallback)). Jede Antwort deklariert ihre Herkunft (`source: "live" | "dump"`), und Dump-Antworten tragen ein `coverage_note` — der Fallback ist **partiell, nicht äquivalent**.
 
 ---
 
@@ -41,6 +46,7 @@ Zugriff auf Schweizer Gerichtsentscheide aller Instanzen über eine einzige MCP-
 - Gerichts-Taxonomie-Auflistung
 - Entscheid-Statistiken mit Aggregationen
 - Dreisprachig (Deutsch, Französisch, Italienisch)
+- **Offline-Fallback** auf einen gecachten öffentlichen Dump, wenn entscheidsuche.ch nicht erreichbar ist — mit expliziter Herkunft in jeder Antwort
 - Kein API-Key erforderlich
 
 ---
@@ -130,6 +136,22 @@ Relevante Umgebungsvariablen (siehe [`.env.example`](.env.example)):
 Die User-Identität stammt aus dem validierten JWT-`sub`-Claim; siehe
 [ADR 0001](docs/adr/0001-http-auth.md).
 
+### Offline-Fallback (ENV)
+
+| Variable | Default | Zweck |
+|---|---|---|
+| `SWISS_COURTS_FALLBACK_ENABLED` | `true` | Hauptschalter. `0` deaktiviert den Dump-Fallback (nur Live). |
+| `SWISS_COURTS_FORCE_DUMP` | `false` | Erzwingt den Dump-Pfad (überspringt Live) — zum Vorwärmen oder für Offline-Tests. |
+| `SWISS_COURTS_CACHE_DIR` | `platformdirs`-Cache | Überschreibt das Cache-Verzeichnis des heruntergeladenen Dumps. |
+| `SWISS_COURTS_DUMP_RECORD` | `14867950` | Zenodo-Record-ID des zu nutzenden SCD-Dumps. |
+
+Cache vorwärmen (lädt den ~120-MB-SCD-CSV einmalig, damit der erste echte
+Ausfall nicht die Download-Zeit zahlt):
+
+```bash
+SWISS_COURTS_FORCE_DUMP=1 python -m swiss_courts_mcp  # dann eine Suche absetzen
+```
+
 ---
 
 ## MCP-Protocol-Version
@@ -166,10 +188,11 @@ genannten Gates.
 | `list_courts` | Alle indexierten Gerichte auflisten, optional nach Kanton |
 | `get_recent_decisions` | Neueste Entscheide, filterbar nach Kanton und Ebene |
 | `get_decision_statistics` | Statistiken nach Kanton und Jahr |
+| `get_fallback_status` | Zustand des Offline-Dump-Caches, Abdeckung, Version, Vorwärmen (read-only) |
 
 ### Tool-Annotations
 
-Alle sieben Tools teilen dieselben Hints — read-only, idempotent,
+Alle acht Tools teilen dieselben Hints — read-only, idempotent,
 nicht-destruktiv, externes System:
 
 | Annotation | Wert |
@@ -203,19 +226,64 @@ neben den Tools).
 │   Claude / Cursor / Windsurf        │
 └──────────────┬──────────────────────┘
                │ MCP-Protokoll
-┌──────────────▼──────────────────────┐
-│       swiss-courts-mcp              │
-│  7 Tools · Pydantic-Validierung     │
-│  Elasticsearch Query-Builder        │
-└──────────────┬──────────────────────┘
-               │ HTTPS (POST/GET)
-┌──────────────▼──────────────────────┐
-│       entscheidsuche.ch             │
-│  Elasticsearch-Backend              │
-│  Keine Authentifizierung nötig      │
-│  Bund + 26 kantonale Gerichte       │
-└─────────────────────────────────────┘
+┌──────────────▼──────────────────────────────┐
+│              swiss-courts-mcp               │
+│  8 Tools · Pydantic-Validierung             │
+│  Elasticsearch Query-Builder                │
+│  Provenance-Envelope: source = live | dump  │
+└───────┬──────────────────────────────┬──────┘
+        │ ① live (Default)             │ ② Fallback
+        │ HTTPS POST/GET               │ bei Bot-Block / 5xx / 429 /
+        │                              │ Timeout, oder SWISS_COURTS_FORCE_DUMP=1
+┌───────▼──────────────────┐   ┌───────▼───────────────────────────────┐
+│     entscheidsuche.ch    │   │   SCD-Dump — Zenodo 14867950 (CC BY)  │
+│  Elasticsearch-Backend   │   │   Lazy-Download → platformdirs-Cache  │
+│  Bund + 26 Kantone       │   │   → lokale SQLite-Suche               │
+│  keine Auth · kein SLA   │   │   nur BGer · 2007–2024 · kein Volltext │
+└──────────────────────────┘   └───────────────────────────────────────┘
 ```
+
+### Architektur-Entscheid
+
+Dieser Server nutzt **Architektur C (Metadaten-only Offline-Fallback),
+geliefert per Lazy-Download (Mechanik von Option A)** — entschieden nach einer
+Live-Probe am 19.07.2026:
+
+- **Immer Live-first.** entscheidsuche.ch bleibt im Erfolgsfall die einzige
+  Quelle; das Live-Verhalten ist unverändert. Der Fallback greift nur bei einem
+  Verfügbarkeitsfehler (Bot-Block, HTTP 5xx/429, Timeout, Connect-Error) oder
+  wenn erzwungen.
+- **Quelle: der SCD-Dump** (Zenodo `10.5281/zenodo.14867950`, Version 2024-3,
+  **CC BY 4.0**), der ~120-MB-CSV — nur Metadaten/Regesten, **kein Volltext**.
+  Der 375-MB-Volltext-Parquet samt schwerer `pyarrow`-Abhängigkeit wurde
+  verworfen: ein partieller Notnagel rechtfertigt den Footprint nicht, und
+  Volltext würde eine Äquivalenz vorgaukeln, die es nicht gibt (nur BGer).
+- **Ein zweiter Kandidat wurde verworfen:** Zenodo `5529712`
+  («SwissJudgmentPrediction») ist CC BY-**NC-SA** 4.0 — unvereinbar mit diesem
+  MIT-Projekt.
+- **Konsequenzen:** Der CSV wird lokal gecacht (`platformdirs`) und via SQLite
+  durchsucht; die Update-Erkennung nutzt die Zenodo-Versions-API (`conceptrecid`
+  7793043). Jede Antwort deklariert `source` (`live`/`dump`); Dump-Antworten
+  ergänzen ein `coverage_note`. Die CC-BY-Attribution wird **im Tool-Output**
+  mitgeliefert, nicht nur hier.
+
+### Offline-Fallback
+
+Der Fallback ist ein **Verhalten der bestehenden Tools**, kein zusätzliches
+Such-Tool (nur `get_fallback_status` kam neu hinzu, für Transparenz). Er ist
+**partiell, nicht äquivalent** zur Live-Quelle:
+
+- Nur **Bundesgericht** (BGer/BGE), **2007–2024**, **kein Volltext**.
+- **Bundesverwaltungsgericht, Bundesstrafgericht und alle 26 Kantone sind NICHT
+  abgedeckt.** Eine kantonale oder Nicht-BGer-Anfrage im Dump-Modus liefert eine
+  explizite «nicht abgedeckt»-Antwort — nie ein stilles leeres Resultat.
+- `get_court_decision` ist im Dump-Modus best-effort: SCD-Aktenzeichen
+  (`docref`, z.B. `1C_517/2016`) unterscheiden sich von entscheidsuche-Signaturen,
+  daher werden manche Lookups ehrlich als nicht auflösbar gemeldet.
+- Ist weder Live noch Dump verfügbar, liefern die Tools einen klaren,
+  handlungsleitenden Fehler (kein Crash, kein Stacktrace).
+
+Cache und Abdeckung jederzeit mit `get_fallback_status` einsehbar.
 
 ---
 
@@ -229,7 +297,7 @@ neben den Tools).
 | **Timeout** | 30 Sekunden pro API-Aufruf |
 | **Datenquellen-Auth** | Kein API-Key nötig — entscheidsuche.ch ist öffentlich zugänglich |
 | **HTTP-Transport-Auth** | Optionale Bearer-Token-Auth (JWT, `sub`-Claim-Identität); siehe [ADR 0001](docs/adr/0001-http-auth.md) |
-| **Egress** | Code-Layer-Allow-List (nur `entscheidsuche.ch`, HTTPS erzwungen); siehe [Egress-Policy](docs/network-egress.md) |
+| **Egress** | Code-Layer-Allow-Lists (`entscheidsuche.ch` für Live; `zenodo.org` für den Offline-Dump), HTTPS erzwungen; siehe [Egress-Policy](docs/network-egress.md) |
 | **Error-Masking** | Interne Exceptions nur serverseitig geloggt; Clients erhalten freundliche Meldungen |
 | **Secrets** | Keine Secrets im Code/Log; `.env` git-ignoriert, Gitleaks auf PRs; siehe [Secret-Management](docs/secret-management.md) |
 | **Lizenzen** | Gerichtsentscheide sind gemäss Schweizer Recht gemeinfrei ([BGG Art. 27](https://www.fedlex.admin.ch/eli/cc/2006/218/de#art_27)) |
@@ -244,6 +312,25 @@ neben den Tools).
 - Statistiken hängen von der Aggregations-Unterstützung des Backends ab
 - Die Gerichts-Taxonomie aus `Facetten_alle.json` kann variieren
 
+**Offline-Fallback (partielle Abdeckung — bitte lesen):** Der Fallback ist ein
+Sicherheitsnetz für die Verfügbarkeit, **kein gleichwertiger Spiegel** der
+Live-Quelle:
+
+- **Gerichts-Umfang:** nur Bundesgericht (BGer/BGE). Bundesverwaltungsgericht,
+  Bundesstrafgericht und **alle 26 kantonalen Gerichte sind nicht abgedeckt.**
+- **Zeitraum:** 2007 – Dezember 2024 (Zeitspanne des SCD-Dumps). Entscheide
+  ausserhalb dieses Fensters sind nicht enthalten.
+- **Inhalt:** nur Metadaten/Regesten — **offline kein Volltext**.
+- **Aktualisierungslatenz:** Der SCD-Dump wird auf Zenodo etwa quartalsweise
+  aktualisiert; die Offline-Daten hinken dem Live-Index also nach.
+  `get_fallback_status` zeigt die gecachte Version und kann Zenodo auf eine
+  neuere prüfen.
+- **Gesetzesreferenz-Suche** trifft offline nur Referenzen, die im Betreff/Regest
+  (`topic`/`issue`) des Entscheids genannt sind — es gibt keinen Offline-Index
+  zitierter Gesetze.
+- Antworten deklarieren ihre Herkunft stets über `source` (`live`/`dump`) und ein
+  `coverage_note`; der Server reduziert die Abdeckung nie stillschweigend.
+
 ---
 
 ## Tests
@@ -252,17 +339,23 @@ Unit-Tests mocken HTTP mit `respx`; Live-Tests laufen in einem separaten
 nächtlichen Workflow ([`live.yml`](.github/workflows/live.yml)) und blockieren
 PRs nie.
 
+Vom Projekt-Root mit `PYTHONPATH=src` ausführen:
+
 ```bash
 # Unit-Tests (HTTP gemockt) — das läuft in der CI
-pytest tests/ -v -m "not live"
+PYTHONPATH=src pytest tests/ -v -m "not live"
 
-# Live-API-Tests (echtes entscheidsuche.ch)
-pytest tests/ -v -m live
+# Live-API-Tests (echtes entscheidsuche.ch + Zenodo)
+PYTHONPATH=src pytest tests/ -v -m live
 
 # Linting
 ruff check src/ tests/
 ruff format src/ tests/
 ```
+
+Die Offline-Fallback-Tests nutzen eine kleine mitgelieferte Schema-Fixture
+(`tests/fixtures/scd_sample.csv`) und mocken den Zenodo-Download mit `respx` —
+der volle ~120-MB-Dump wird nie committet oder in der CI heruntergeladen.
 
 ---
 
@@ -298,7 +391,9 @@ Hayal Oezkan · [malkreide](https://github.com/malkreide)
 
 ## Credits & Verwandte Projekte
 
-- [entscheidsuche.ch](https://entscheidsuche.ch) — Schweizer Gerichtsentscheid-Suchmaschine
+- [entscheidsuche.ch](https://entscheidsuche.ch) — Schweizer Gerichtsentscheid-Suchmaschine (Live-Quelle)
+- **Swiss Federal Supreme Court Dataset (SCD)** — Offline-Fallback-Quelle, **CC BY 4.0**:
+  Geering, F. & Merane, J. (2025). *Swiss Federal Supreme Court Dataset (SCD)*, Version 2024-3. Zenodo. https://doi.org/10.5281/zenodo.14867950
 - [fedlex-mcp](https://github.com/malkreide/fedlex-mcp) — MCP-Server für Schweizer Bundesrecht (Gesetzes-Synergie)
 - [zurich-opendata-mcp](https://github.com/malkreide/zurich-opendata-mcp) — MCP-Server für Zürcher Open Data
 - [Model Context Protocol](https://modelcontextprotocol.io/) — Offenes Protokoll für KI-Tool-Integration

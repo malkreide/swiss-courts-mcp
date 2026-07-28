@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Behoben / Fixed
+- **`mcp` auf `<2` gepinnt.** `mcp` 2.0.0 hat `mcp.server.fastmcp` entfernt; die
+  bisherige Angabe `mcp[cli]>=1.28.1` war nach oben offen, sodass jede frische
+  Installation die 2.x zog und der Server beim Import scheiterte
+  (`ModuleNotFoundError: No module named 'mcp.server.fastmcp'`, 5 Test-Module
+  bereits beim Sammeln). Betrifft jeden Neuaufbau seit dem 2.0.0-Release, nicht
+  nur die CI. Der Pin entspricht dem Portfolio-Standard (vgl.
+  `swiss-environment-mcp`, Audit ARCH-012).
+
+### Geändert / Changed
+- **User-Agent aus den Paket-Metadaten abgeleitet.** `__version__` und der
+  `USER_AGENT` in `api_client.py` waren zwei handgepflegte Literale, die
+  zufällig beide auf 0.3.0 standen — erzwungen war das nicht. Beim nächsten
+  Versionsbump hätte entscheidsuche.ch einen veralteten Wert gesehen; genau so
+  ist es in fünf Schwester-Servern des Portfolios passiert. Die Version kommt
+  jetzt aus `importlib.metadata`. Abgesichert durch `tests/test_version.py`.
+
 ## [0.3.0]
 
 ### Added

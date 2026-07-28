@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from swiss_courts_mcp import __version__
 from swiss_courts_mcp.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -40,7 +41,8 @@ MAX_SIZE = 50
 # Bewusst als frozenset, nicht zur Laufzeit mutierbar.
 ALLOWED_HOSTS: frozenset[str] = frozenset({"entscheidsuche.ch"})
 
-USER_AGENT = "swiss-courts-mcp/0.3.0"
+# Derived from the package version, not hand-maintained — see __init__.py.
+USER_AGENT = f"swiss-courts-mcp/{__version__}"
 
 
 class EgressNotAllowedError(RuntimeError):

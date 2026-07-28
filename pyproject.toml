@@ -32,7 +32,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "mcp[cli]>=1.28.1",
+    # Major-Version gepinnt: mcp 2.0.0 hat `mcp.server.fastmcp` entfernt, was
+    # diesen Server beim Import brechen laesst. Der Pin legt zugleich die
+    # ausgehandelte MCP-Protokoll-Version fest (Portfolio-Standard, vgl.
+    # swiss-environment-mcp Audit ARCH-012). Updates via Dependabot.
+    "mcp[cli]>=1.28.1,<2",
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
     "structlog>=25.5.0",

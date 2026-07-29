@@ -1211,6 +1211,44 @@ mcp = create_mcp(Settings.from_env(), http=False)
 # ---------------------------------------------------------------------------
 
 
+def build_transport_security(settings: Settings):
+    """Host/Origin-Allow-List für den HTTP-Transport (SEC-005, eingehend).
+
+    Ohne ``transport_security`` lässt das SDK den DNS-Rebinding-Schutz aus —
+    sein eigener Kommentar: "If not specified, disable DNS rebinding protection
+    by default for backwards compatibility". Ungesetzt heisst also: keine Host-
+    und keine Origin-Prüfung.
+
+    Rückgabe ``None``, wenn keine Allow-List ableitbar ist — Nicht-Loopback-Bind
+    ohne ``MCP_ALLOWED_HOSTS``. Der Server wird dann unter einem Service- oder
+    DNS-Namen erreicht, den dieser Prozess nicht kennt; eine geratene Liste
+    würde jede echte Anfrage mit HTTP 421 abweisen. Der Aufrufer warnt.
+    """
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    port = settings.port
+    loopback = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
+    if settings.allowed_hosts:
+        # Loopback bleibt für Container-Health-Checks erreichbar.
+        hosts = set(settings.allowed_hosts) | loopback
+    elif settings.host in ("127.0.0.1", "localhost", "::1"):
+        hosts = loopback | {f"{settings.host}:{port}"}
+    else:
+        return None
+
+    # Konfigurierte CORS-Origins müssen auch die Transport-Prüfung passieren,
+    # sonst weist der Server genau die Browser-Clients ab, die CORS erlaubt.
+    # "*" ist hier nicht ausdrückbar (Origins werden literal verglichen, nur
+    # ein abschliessendes ":*" ist ein Port-Wildcard) und wird nicht kopiert.
+    origins = {o for o in settings.cors_origins if o != "*"}
+    origins |= {f"http://{h}" for h in hosts}
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=sorted(hosts),
+        allowed_origins=sorted(origins),
+    )
+
+
 def _run_http(settings: Settings) -> None:
     """Startet den HTTP-Transport mit Auth (SEC-009) und CORS (SDK-004)."""
     import uvicorn
@@ -1228,6 +1266,16 @@ def _run_http(settings: Settings) -> None:
         )
 
     server = create_mcp(settings, http=True)
+    security = build_transport_security(settings)
+    if security is None:
+        log.warning(
+            "dns_rebinding_protection_off",
+            host=settings.host,
+            hint="Setze MCP_ALLOWED_HOSTS auf die Hostnamen, unter denen "
+            "dieser Server erreichbar ist — ohne transport_security prüft das "
+            "SDK den Host-Header überhaupt nicht.",
+        )
+    server.settings.transport_security = security
     app = server.streamable_http_app()
     if settings.cors_origins:
         app.add_middleware(

@@ -48,6 +48,14 @@ class Settings(BaseModel):
     # --- CORS (SDK-004) ---
     cors_origins: list[str] = Field(default_factory=list)
 
+    # --- Inbound Host-Pinning (SEC-005, eingehende Hälfte) ---
+    # Hostnamen, unter denen der Server erreichbar ist, via MCP_ALLOWED_HOSTS
+    # (komma-separiert, z. B. "mcp.example.ch,mcp.example.ch:443"). Nur bei
+    # Nicht-Loopback-Bind nötig: der erreichbare Name ist dann ein Service-
+    # oder DNS-Name, den dieser Prozess aus der Bind-Adresse nicht ableiten
+    # kann. Leer lassen behält bei solchem Bind das bisherige Verhalten.
+    allowed_hosts: list[str] = Field(default_factory=list)
+
     @classmethod
     def from_env(cls) -> Settings:
         """Baut das Settings-Objekt aus Environment-Variablen."""
@@ -63,4 +71,5 @@ class Settings(BaseModel):
             oauth_audience=os.environ.get("MCP_OAUTH_AUDIENCE"),
             required_scopes=_env_list("MCP_REQUIRED_SCOPES"),
             cors_origins=_env_list("MCP_CORS_ORIGINS"),
+            allowed_hosts=_env_list("MCP_ALLOWED_HOSTS"),
         )

@@ -29,3 +29,6 @@ jobs:
 
       - name: Lint
         run: ruff check src/ tests/
+
+      - name: Versions-Sync (pyproject ↔ server.json / README / src)
+        run: python scripts/check_version_sync.py

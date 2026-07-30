@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Geändert / Changed
+- **Migration auf die `mcp` 2.x Server-API.** Pin von `>=1.28.1,<2` auf
+  `>=2.0.0,<3`. Die Untergrenze ist hart: 2.0.0 hat `mcp.server.fastmcp` ohne
+  Kompatibilitätsschicht entfernt, dieser Code läuft also gar nicht mehr auf
+  1.x. `FastMCP` → `MCPServer` (`mcp.server.mcpserver`).
+
+- **`stateless_http` wieder verdrahtet (SCALE-002).** In 1.x war es ein
+  `MCPServer`-Konstruktor-Argument, in 2.x ein Kwarg von
+  `streamable_http_app()`. Beim Umbau war es ersatzlos verschwunden: die App
+  baut weiter, fällt aber still auf Sticky-Sessions zurück — horizontale
+  Skalierung wäre unbemerkt weg gewesen, weil kein Test den Zwischenzustand
+  mehr lesen konnte. Geprüft wird jetzt der Kwarg selbst, über beide Werte
+  (der Default ist `True`, ein hartkodiertes `True` wäre sonst durchgegangen),
+  und zusätzlich, dass der Bind mitreist: 2.x schaltet bei loopback-artigem
+  `host` automatisch eine `127.0.0.1:*`-Allow-List scharf, ein 0.0.0.0-Bind
+  hätte damit jede echte Anfrage mit HTTP 421 abgewiesen.
+
+- **`transport_security` als App-Kwarg.** `server.settings.transport_security = …`
+  wirft in 2.x `ValueError`. Ohne den Kwarg fällt die App auf die
+  SDK-Loopback-Policy zurück — und genau dann hält
+  `test_right_host_wrong_port_is_rejected` nicht mehr.
+
+- **Protokoll-Drift-Guard auf die richtige Ära gerichtet (ARCH-012).** 2.x
+  bedient zwei Ären über denselben Server: der Legacy-`initialize`-Handshake
+  deckelt bei 2025-11-25, die moderne Envelope-Ära erreicht 2026-07-28.
+  `LATEST_PROTOCOL_VERSION` ist in 2.x ein Alias auf die *moderne* Version, der
+  alte Guard verglich also gegen den falschen Wert und schlug fehl — nicht
+  fälschlich, denn das SDK bringt wirklich eine neuere Revision mit.
+  `PROTOCOL_VERSION` bleibt bei `2025-11-25`, weil es die Handshake-Ära
+  beschreibt; geprüft wird jetzt gegen `LATEST_HANDSHAKE_VERSION` **und**
+  `LATEST_MODERN_VERSION`, statt eine Ära stillschweigend zu übergehen.
+  Nachgemessen statt aus Konstantennamen geschlossen: ein Legacy-`initialize`
+  mit `2026-07-28` bekommt `2025-11-25` zurück, ältere Clients behalten ihre
+  Revision.
+
+- **`CallToolResult`-Feldnamen.** `mcp_types` hat auf snake_case umgestellt
+  (`structuredContent` → `structured_content`). Die camelCase-Namen bleiben
+  Pydantic-Aliase, das alte Kwarg funktionierte also weiter und die Suite blieb
+  grün — nur mypy hätte es gesehen. Auf der Leitung steht unverändert
+  `structuredContent`/`isError`, nachgeprüft am serialisierten Ergebnis.
+
+  Geprüft: 129 passed / 4 deselected gegen die 1.x-Baseline von 120 — die
+  Differenz sind genau die neun neuen Tests. `ruff check src/ tests/` und ein
+  Install in einem frischen venv sind grün. Der neue Protokoll-Guard ist
+  mutationsgetestet: bei verschobenem Pin fallen vier Tests.
+
 ### Behoben / Fixed
 - **`mcp` auf `<2` gepinnt.** `mcp` 2.0.0 hat `mcp.server.fastmcp` entfernt; die
   bisherige Angabe `mcp[cli]>=1.28.1` war nach oben offen, sodass jede frische

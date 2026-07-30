@@ -64,8 +64,14 @@ def test_wildcard_cors_is_not_copied():
 def _post_with_host(host_header: str):
     settings = Settings(host="127.0.0.1", port=8000)
     server = create_mcp(settings, http=True)
-    server.settings.transport_security = build_transport_security(settings)
-    with TestClient(server.streamable_http_app()) as client:
+    # mcp 2.x: transport_security ist ein per-App-Kwarg, keine Setting mehr.
+    # Ohne den Kwarg würde die App auf die SDK-Loopback-Policy zurückfallen
+    # (``127.0.0.1:*``) — und genau dann hält test_right_host_wrong_port nicht.
+    with TestClient(
+        server.streamable_http_app(
+            transport_security=build_transport_security(settings), host=settings.host
+        )
+    ) as client:
         return client.post("/mcp", headers={"Host": host_header, **_HEADERS}, json=_INIT)
 
 

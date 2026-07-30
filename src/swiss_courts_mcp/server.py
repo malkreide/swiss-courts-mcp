@@ -11,7 +11,7 @@ Lizenz: Freie Nutzung (kein API-Key nötig)
 Synergie mit fedlex-mcp: Gesetze (SR) + Rechtsprechung = vollständige Rechtsrecherche.
 
 Transport: Dual — stdio (lokal, ohne Auth) und streamable-http (Cloud, mit Auth).
-MCP-Protokoll: siehe `PROTOCOL_VERSION` (von der FastMCP-SDK-Version bestimmt).
+MCP-Protokoll: siehe `PROTOCOL_VERSION` (von der MCPServer-SDK-Version bestimmt).
 Phase: 1 (read-only) — siehe ROADMAP.md.
 """
 
@@ -24,8 +24,8 @@ from contextlib import asynccontextmanager
 from enum import StrEnum
 
 import httpx
-from mcp.server.fastmcp import Context, FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -597,11 +597,17 @@ def _result(markdown: str, structured: BaseModel | dict) -> CallToolResult:
     """Liefert kuratiertes Markdown (content) UND maschinenlesbares
     structuredContent in einem Tool-Result (SDK-002).
 
-    Die Tools werden mit ``structured_output=False`` registriert, damit FastMCP
+    Die Tools werden mit ``structured_output=False`` registriert, damit MCPServer
     dieses ``CallToolResult`` unverändert durchreicht.
+
+    mcp 2.x hat die Feldnamen auf snake_case umgestellt. ``structuredContent``
+    bleibt als Pydantic-Alias gültig, funktionierte also zur Laufzeit weiter —
+    aufgefallen ist es nur mypy. Hier steht der Feldname, weil er die
+    deklarierte API ist; auf der Leitung steht ohnehin der Alias, das JSON
+    ändert sich nicht.
     """
     sc = structured.model_dump(mode="json") if isinstance(structured, BaseModel) else structured
-    return CallToolResult(content=[TextContent(type="text", text=markdown)], structuredContent=sc)
+    return CallToolResult(content=[TextContent(type="text", text=markdown)], structured_content=sc)
 
 
 # ---------------------------------------------------------------------------
@@ -1106,7 +1112,7 @@ _TOOLS = [
 ]
 
 
-def register_tools(mcp: FastMCP) -> None:
+def register_tools(mcp: MCPServer) -> None:
     """Registriert alle Tools mit expliziten Annotations (ARCH-009).
 
     ``structured_output=False``: die Tools liefern ein eigenes ``CallToolResult``
@@ -1121,7 +1127,7 @@ def register_tools(mcp: FastMCP) -> None:
         )(fn)
 
 
-def register_prompts(mcp: FastMCP) -> None:
+def register_prompts(mcp: MCPServer) -> None:
     """Registriert kuratierte Prompts (zweites Primitiv, ARCH-008)."""
 
     @mcp.prompt(name="rechtsrecherche", title="Schweizer Rechtsrecherche")
@@ -1143,7 +1149,7 @@ def register_prompts(mcp: FastMCP) -> None:
 
 
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[dict]:
+async def app_lifespan(server: MCPServer) -> AsyncIterator[dict]:
     """Erzeugt den HTTP-Client beim Start, schliesst ihn beim Shutdown."""
     configure_logging(os.environ.get("MCP_LOG_LEVEL", "INFO"))
     client = api_client.new_client()
@@ -1175,8 +1181,8 @@ def _build_auth(settings: Settings):
     return auth_settings, JWTTokenVerifier(settings)
 
 
-def create_mcp(settings: Settings, *, http: bool = False) -> FastMCP:
-    """Baut eine FastMCP-Instanz. Auth wird nur im HTTP-Modus verdrahtet."""
+def create_mcp(settings: Settings, *, http: bool = False) -> MCPServer:
+    """Baut eine MCPServer-Instanz. Auth wird nur im HTTP-Modus verdrahtet."""
     kwargs: dict = dict(
         instructions=(
             "MCP-Server für Schweizer Gerichtsentscheide via entscheidsuche.ch. "
@@ -1186,17 +1192,16 @@ def create_mcp(settings: Settings, *, http: bool = False) -> FastMCP:
             "Alle Daten stammen von entscheidsuche.ch (öffentlich, kein API-Key nötig)."
         ),
         lifespan=app_lifespan,
-        host=settings.host,
-        port=settings.port,
     )
+    # mcp 2.x: host/port/stateless_http are no longer constructor arguments —
+    # they are run()/app kwargs now and are applied where the app is built.
     if http:
-        kwargs["stateless_http"] = settings.stateless_http  # SCALE-002: zustandslos skalierbar
         if settings.auth_enabled:
             auth_settings, verifier = _build_auth(settings)
             kwargs["auth"] = auth_settings
             kwargs["token_verifier"] = verifier
 
-    mcp = FastMCP("swiss_courts_mcp", **kwargs)
+    mcp = MCPServer("swiss_courts_mcp", **kwargs)
     register_tools(mcp)
     register_prompts(mcp)
     return mcp
@@ -1275,8 +1280,15 @@ def _run_http(settings: Settings) -> None:
             "dieser Server erreichbar ist — ohne transport_security prüft das "
             "SDK den Host-Header überhaupt nicht.",
         )
-    server.settings.transport_security = security
-    app = server.streamable_http_app()
+    # mcp 2.x: transport_security und stateless_http sind per-App-Kwargs, keine
+    # Settings mehr. stateless_http muss hier stehen — es war in 1.x ein
+    # MCPServer-Konstruktor-Argument, und ohne diese Zeile fiele SCALE-002
+    # still auf Sticky-Sessions zurück.
+    app = server.streamable_http_app(
+        transport_security=security,
+        host=settings.host,
+        stateless_http=settings.stateless_http,
+    )
     if settings.cors_origins:
         app.add_middleware(
             CORSMiddleware,

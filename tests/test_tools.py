@@ -10,7 +10,7 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult
 
 from swiss_courts_mcp import server
@@ -35,8 +35,8 @@ def text(res: CallToolResult) -> str:
 
 def sc(res: CallToolResult) -> dict:
     """structuredContent aus dem Tool-Result (SDK-002)."""
-    assert res.structuredContent is not None, "structuredContent fehlt"
-    return res.structuredContent
+    assert res.structured_content is not None, "structuredContent fehlt"
+    return res.structured_content
 
 
 @respx.mock

@@ -32,11 +32,17 @@ classifiers = [
 ]
 
 dependencies = [
-    # Major-Version gepinnt: mcp 2.0.0 hat `mcp.server.fastmcp` entfernt, was
-    # diesen Server beim Import brechen laesst. Der Pin legt zugleich die
-    # ausgehandelte MCP-Protokoll-Version fest (Portfolio-Standard, vgl.
-    # swiss-environment-mcp Audit ARCH-012). Updates via Dependabot.
-    "mcp[cli]>=1.28.1,<2",
+    # Jetzt auf der 2.x-API (`mcp.server.mcpserver`). Die Untergrenze ist hart:
+    # 2.0.0 hat `mcp.server.fastmcp` ohne Kompatibilitaetsschicht entfernt,
+    # dieser Code laeuft also gar nicht mehr auf 1.x — ein `>=1.x`-Bereich
+    # wuerde einen Resolver eine Version waehlen lassen, die beim Import
+    # scheitert. Der `<3`-Deckel bleibt: ein Major-Sprung ist eine bewusste
+    # Entscheidung. Updates via Dependabot.
+    # Der Pin bestimmt weiterhin die Protokoll-Revision (ARCH-012), aber 2.x
+    # bedient zwei Aeren: der Legacy-`initialize`-Handshake deckelt bei
+    # 2025-11-25 (== PROTOCOL_VERSION), die moderne Envelope-Aera erreicht
+    # 2026-07-28. `tests/test_protocol.py` haelt beides nachgemessen fest.
+    "mcp[cli]>=2.0.0,<3",
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
     "structlog>=25.5.0",

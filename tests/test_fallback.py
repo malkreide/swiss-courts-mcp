@@ -19,7 +19,7 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult
 
 from swiss_courts_mcp import fallback, server
@@ -42,8 +42,8 @@ def text(res: CallToolResult) -> str:
 
 
 def sc(res: CallToolResult) -> dict:
-    assert res.structuredContent is not None
-    return res.structuredContent
+    assert res.structured_content is not None
+    return res.structured_content
 
 
 @pytest.fixture

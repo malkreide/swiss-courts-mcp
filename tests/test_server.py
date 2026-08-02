@@ -118,6 +118,7 @@ class TestInputModels:
 
     def test_search_input_minimal(self):
         from swiss_courts_mcp.server import SearchDecisionsInput
+
         inp = SearchDecisionsInput(query="Datenschutz")
         assert inp.query == "Datenschutz"
         assert inp.canton is None
@@ -126,6 +127,7 @@ class TestInputModels:
 
     def test_search_input_full(self):
         from swiss_courts_mcp.server import SearchDecisionsInput
+
         inp = SearchDecisionsInput(
             query="Mietrecht",
             canton=Canton.ZH,
@@ -140,31 +142,37 @@ class TestInputModels:
 
     def test_search_input_query_too_short(self):
         from swiss_courts_mcp.server import SearchDecisionsInput
+
         with pytest.raises(Exception):
             SearchDecisionsInput(query="x")
 
     def test_search_input_invalid_date(self):
         from swiss_courts_mcp.server import SearchDecisionsInput
+
         with pytest.raises(Exception):
             SearchDecisionsInput(query="Test", date_from="not-a-date")
 
     def test_get_decision_input(self):
         from swiss_courts_mcp.server import GetDecisionInput
+
         inp = GetDecisionInput(signature="CH_BGer_005_test")
         assert inp.signature == "CH_BGer_005_test"
 
     def test_law_reference_input(self):
         from swiss_courts_mcp.server import SearchByLawInput
+
         inp = SearchByLawInput(law_reference="Art. 8 BV")
         assert inp.law_reference == "Art. 8 BV"
 
     def test_stats_input(self):
         from swiss_courts_mcp.server import DecisionStatsInput
+
         inp = DecisionStatsInput(canton=Canton.BE, year=2024)
         assert inp.canton == Canton.BE
         assert inp.year == 2024
 
     def test_extra_fields_forbidden(self):
         from swiss_courts_mcp.server import SearchDecisionsInput
+
         with pytest.raises(Exception):
             SearchDecisionsInput(query="Test", unknown_field="x")

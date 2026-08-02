@@ -71,6 +71,7 @@ def assert_host_allowed(url: str) -> None:
     if host not in ALLOWED_HOSTS:
         raise EgressNotAllowedError(f"Host {host!r} nicht auf der Egress-Allow-List")
 
+
 # Mapping: Spider-Prefix → Gerichts-Hierarchie für Filter
 COURT_LEVEL_PREFIXES = {
     "bundesgericht": ["CH_BGer", "CH_BGE"],
@@ -129,32 +130,30 @@ def build_search_body(
 
     # Volltextsuche
     if query:
-        must_clauses.append({
-            "query_string": {
-                "query": query,
-                "fields": SEARCH_FIELDS,
-                "default_operator": "AND",
-                "type": "cross_fields",
+        must_clauses.append(
+            {
+                "query_string": {
+                    "query": query,
+                    "fields": SEARCH_FIELDS,
+                    "default_operator": "AND",
+                    "type": "cross_fields",
+                }
             }
-        })
+        )
 
     # Kantons-Filter (über hierarchy-Feld)
     if canton:
         filter_clauses.append({"term": {"hierarchy.keyword": canton}})
 
     # Gerichts-Ebene oder spezifische Prefixes
-    prefixes = court_prefixes or (
-        COURT_LEVEL_PREFIXES.get(court_level, []) if court_level else []
-    )
+    prefixes = court_prefixes or (COURT_LEVEL_PREFIXES.get(court_level, []) if court_level else [])
     if prefixes:
         # Mehrere Prefixes → should (OR)
         prefix_clauses = [{"prefix": {"_id": p}} for p in prefixes]
         if len(prefix_clauses) == 1:
             filter_clauses.append(prefix_clauses[0])
         else:
-            filter_clauses.append({
-                "bool": {"should": prefix_clauses, "minimum_should_match": 1}
-            })
+            filter_clauses.append({"bool": {"should": prefix_clauses, "minimum_should_match": 1}})
 
     # Datumsbereich
     if date_from or date_to:
@@ -193,13 +192,13 @@ def build_id_query(signature: str) -> dict:
 
 # Pattern: "Art. 8 BV", "Art. 328 OR", "§ 123 StGB", "Art. 25 Abs. 1 DSG"
 _LAW_REF_PATTERN = re.compile(
-    r"(?:Art\.?|Artikel|§)\s*"          # Prefix: Art., Artikel, §
-    r"(\d+[a-z]?)"                      # Artikelnummer (z.B. 8, 328, 25a)
-    r"(?:\s+(?:Abs\.?\s*\d+))?"         # Optional: Abs. 1
-    r"(?:\s+(?:lit\.?\s*[a-z]))?"       # Optional: lit. a
-    r"(?:\s+(?:Ziff\.?\s*\d+))?"        # Optional: Ziff. 1
+    r"(?:Art\.?|Artikel|§)\s*"  # Prefix: Art., Artikel, §
+    r"(\d+[a-z]?)"  # Artikelnummer (z.B. 8, 328, 25a)
+    r"(?:\s+(?:Abs\.?\s*\d+))?"  # Optional: Abs. 1
+    r"(?:\s+(?:lit\.?\s*[a-z]))?"  # Optional: lit. a
+    r"(?:\s+(?:Ziff\.?\s*\d+))?"  # Optional: Ziff. 1
     r"\s+"
-    r"([A-ZÄÖÜa-zäöü]{2,})",           # Gesetzeskürzel (BV, OR, DSG, StGB)
+    r"([A-ZÄÖÜa-zäöü]{2,})",  # Gesetzeskürzel (BV, OR, DSG, StGB)
     re.IGNORECASE,
 )
 
@@ -246,38 +245,44 @@ def build_law_reference_body(
     should_clauses: list[dict] = []
 
     # 1. Exakte Phrase (höchster Boost)
-    should_clauses.append({
-        "query_string": {
-            "query": f"\"{law_reference}\"",
-            "fields": SEARCH_FIELDS,
-            "default_operator": "AND",
-            "boost": 10,
+    should_clauses.append(
+        {
+            "query_string": {
+                "query": f'"{law_reference}"',
+                "fields": SEARCH_FIELDS,
+                "default_operator": "AND",
+                "boost": 10,
+            }
         }
-    })
+    )
 
     # 2. Wenn geparst: Artikelnummer + Kürzel (mittlerer Boost)
     if parsed["article"] and parsed["law"]:
         # Varianten: "Art. 8" + "BV", "Artikel 8" + "BV", etc.
-        should_clauses.append({
-            "query_string": {
-                "query": f"{parsed['article']} {parsed['law']}",
-                "fields": SEARCH_FIELDS,
-                "default_operator": "AND",
-                "type": "cross_fields",
-                "boost": 3,
+        should_clauses.append(
+            {
+                "query_string": {
+                    "query": f"{parsed['article']} {parsed['law']}",
+                    "fields": SEARCH_FIELDS,
+                    "default_operator": "AND",
+                    "type": "cross_fields",
+                    "boost": 3,
+                }
             }
-        })
+        )
 
     # 3. Nur Gesetzeskürzel (niedriger Boost, für Kontext)
     if parsed["law"]:
-        should_clauses.append({
-            "query_string": {
-                "query": f"\"{parsed['law']}\"",
-                "fields": SEARCH_FIELDS,
-                "default_operator": "AND",
-                "boost": 1,
+        should_clauses.append(
+            {
+                "query_string": {
+                    "query": f'"{parsed["law"]}"',
+                    "fields": SEARCH_FIELDS,
+                    "default_operator": "AND",
+                    "boost": 1,
+                }
             }
-        })
+        )
 
     # Bool-Query: mindestens eine Klausel muss matchen
     bool_query: dict = {
@@ -427,9 +432,7 @@ def extract_hit(hit: dict, lang: str = "de") -> dict:
     abstract_obj = source.get("abstract", {})
     title = title_obj.get(lang) or title_obj.get("de") or next(iter(title_obj.values()), "")
     abstract = (
-        abstract_obj.get(lang)
-        or abstract_obj.get("de")
-        or next(iter(abstract_obj.values()), "")
+        abstract_obj.get(lang) or abstract_obj.get("de") or next(iter(abstract_obj.values()), "")
     )
 
     references = source.get("reference", [])

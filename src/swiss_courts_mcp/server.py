@@ -61,10 +61,7 @@ MAX_RESULTS_LIMIT = 50
 PROTOCOL_VERSION = "2025-11-25"
 
 # Maschinen-/menschenlesbarer Quellen- + Lizenz-Footer (CH-004).
-SOURCE_FOOTER = (
-    f"\n---\n*Quelle: {DATA_SOURCE} ({DATA_SOURCE_URL}) · "
-    f"Lizenz: {DATA_LICENSE}*"
-)
+SOURCE_FOOTER = f"\n---\n*Quelle: {DATA_SOURCE} ({DATA_SOURCE_URL}) · Lizenz: {DATA_LICENSE}*"
 
 # Footer für Offline-Fallback-Antworten. CC-BY-Attribution wird im Tool-Output
 # mitgeliefert (nicht nur im README) — sonst geht sie beim Weiterreichen verloren.
@@ -80,6 +77,7 @@ DUMP_FOOTER = (
 
 class Canton(StrEnum):
     """Schweizer Kantone."""
+
     ZH = "ZH"
     BE = "BE"
     LU = "LU"
@@ -110,6 +108,7 @@ class Canton(StrEnum):
 
 class CourtLevel(StrEnum):
     """Gerichtsebene (Bund)."""
+
     BUNDESGERICHT = "bundesgericht"
     BUNDESVERWALTUNGSGERICHT = "bundesverwaltungsgericht"
     BUNDESSTRAFGERICHT = "bundesstrafgericht"
@@ -118,6 +117,7 @@ class CourtLevel(StrEnum):
 
 class Language(StrEnum):
     """Sprachen."""
+
     DE = "de"
     FR = "fr"
     IT = "it"
@@ -134,7 +134,7 @@ class SearchDecisionsInput(BaseModel):
         ...,
         description=(
             "Suchbegriff(e) für Volltextsuche in Gerichtsentscheiden. "
-            "Unterstützt: \"exakte Phrasen\", AND/OR Operatoren. "
+            'Unterstützt: "exakte Phrasen", AND/OR Operatoren. '
             "Beispiele: 'Datenschutz', 'Mietrecht Kündigung', '\"faire Verfahren\"'"
         ),
         min_length=2,
@@ -236,11 +236,13 @@ class SearchByLawInput(BaseModel):
     )
     language: Language = Field(default=Language.DE)
     date_from: str | None = Field(
-        default=None, description="Frühestes Datum (YYYY-MM-DD).",
+        default=None,
+        description="Frühestes Datum (YYYY-MM-DD).",
         pattern=r"^\d{4}-\d{2}-\d{2}$",
     )
     date_to: str | None = Field(
-        default=None, description="Spätestes Datum (YYYY-MM-DD).",
+        default=None,
+        description="Spätestes Datum (YYYY-MM-DD).",
         pattern=r"^\d{4}-\d{2}-\d{2}$",
     )
     limit: int = Field(default=MAX_RESULTS_DEFAULT, ge=1, le=MAX_RESULTS_LIMIT)
@@ -475,12 +477,14 @@ def _dump_banner(note: str) -> str:
 
 def _render_dump_search(dump: fallback.DumpResult, *, query: str, desc: str) -> CallToolResult:
     """Rendert ein Dump-Suchergebnis (Markdown + Envelope mit source='dump')."""
-    envelope = _build_response(
-        query, dump.total, dump.hits, source="dump", coverage_note=dump.note
-    )
+    envelope = _build_response(query, dump.total, dump.hits, source="dump", coverage_note=dump.note)
     banner = _dump_banner(dump.note)
     if dump.total == 0 or not dump.hits:
-        reason = "im Offline-Dump nicht abgedeckt" if dump.out_of_coverage else "keine Treffer im Offline-Dump"
+        reason = (
+            "im Offline-Dump nicht abgedeckt"
+            if dump.out_of_coverage
+            else "keine Treffer im Offline-Dump"
+        )
         md = f"{banner}\n\n## {desc}\n**{reason}** (Treffer-Typ: none)."
         return _result(md + DUMP_FOOTER, envelope)
     parts = [
@@ -573,8 +577,13 @@ async def _statistics_fallback(
             {**_dump_meta(), "total": 0, "by_canton": [], "by_year": [], "by_area": []},
         )
     total = data["total"]
-    lines = [banner, "", "## Entscheid-Statistiken (Offline-Dump)", "",
-             f"**Gesamtzahl (BGer):** {total:,} Entscheide"]
+    lines = [
+        banner,
+        "",
+        "## Entscheid-Statistiken (Offline-Dump)",
+        "",
+        f"**Gesamtzahl (BGer):** {total:,} Entscheide",
+    ]
     if year:
         lines.append(f"**Filter:** Jahr {year}")
     by_year = data["by_year"]
@@ -584,13 +593,27 @@ async def _statistics_fallback(
             lines.append(f"| {b['year']} | {b['count']:,} |")
     by_area = data["by_area"]
     if by_area:
-        lines.extend(["", "### Nach Rechtsgebiet", "", "| Rechtsgebiet | Anzahl |",
-                      "|--------------|--------|"])
+        lines.extend(
+            [
+                "",
+                "### Nach Rechtsgebiet",
+                "",
+                "| Rechtsgebiet | Anzahl |",
+                "|--------------|--------|",
+            ]
+        )
         for b in by_area[:10]:
             lines.append(f"| {b['key']} | {b['count']:,} |")
-    return _result("\n".join(lines) + DUMP_FOOTER, {
-        **_dump_meta(), "total": total, "by_canton": [], "by_year": by_year, "by_area": by_area,
-    })
+    return _result(
+        "\n".join(lines) + DUMP_FOOTER,
+        {
+            **_dump_meta(),
+            "total": total,
+            "by_canton": [],
+            "by_year": by_year,
+            "by_area": by_area,
+        },
+    )
 
 
 def _result(markdown: str, structured: BaseModel | dict) -> CallToolResult:
@@ -655,17 +678,24 @@ async def search_court_decisions(params: SearchDecisionsInput, ctx: Context) -> 
             for h in result.get("hits", {}).get("hits", [])
         ]
         envelope = _build_response(params.query, total, hits)
-        parts = [result_header(
-            envelope.count, total, desc,
-            match_type=envelope.match_type,
-        )]
+        parts = [
+            result_header(
+                envelope.count,
+                total,
+                desc,
+                match_type=envelope.match_type,
+            )
+        ]
         for i, hit in enumerate(hits, 1):
             parts.append(format_hit(hit, i))
         return _result("\n\n".join(parts) + SOURCE_FOOTER, envelope)
 
     except Exception as e:  # noqa: BLE001 — wird maskiert; Trigger → Fallback (Phase 3)
         return await _fallback_or_raise(
-            ctx, e, query=params.query, desc=desc,
+            ctx,
+            e,
+            query=params.query,
+            desc=desc,
             dump_factory=lambda: fallback.search_dump(
                 query=params.query,
                 canton=params.canton.value if params.canton else None,
@@ -697,10 +727,14 @@ async def get_court_decision(params: GetDecisionInput, ctx: Context) -> CallTool
 
         hit = api_client.extract_hit(hit_raw, params.language.value)
         decision = DecisionResult(**hit)
-        return _result(format_decision_detail(hit) + SOURCE_FOOTER, {
-            **_live_meta(), "match_type": "exact",
-            "decision": decision.model_dump(mode="json"),
-        })
+        return _result(
+            format_decision_detail(hit) + SOURCE_FOOTER,
+            {
+                **_live_meta(),
+                "match_type": "exact",
+                "decision": decision.model_dump(mode="json"),
+            },
+        )
 
     except Exception as e:  # noqa: BLE001
         return await _get_decision_fallback(
@@ -721,7 +755,7 @@ async def search_bger_decisions(params: SearchBGerInput, ctx: Context) -> CallTo
         prefixes = ["CH_BGer", "CH_BGE"]
         query = params.query
         if params.chamber:
-            query = f"{query} \"{params.chamber}\""
+            query = f'{query} "{params.chamber}"'
 
         body = api_client.build_search_body(
             query=query,
@@ -746,17 +780,24 @@ async def search_bger_decisions(params: SearchBGerInput, ctx: Context) -> CallTo
             for h in result.get("hits", {}).get("hits", [])
         ]
         envelope = _build_response(params.query, total, hits)
-        parts = [result_header(
-            envelope.count, total, desc,
-            match_type=envelope.match_type,
-        )]
+        parts = [
+            result_header(
+                envelope.count,
+                total,
+                desc,
+                match_type=envelope.match_type,
+            )
+        ]
         for i, hit in enumerate(hits, 1):
             parts.append(format_hit(hit, i))
         return _result("\n\n".join(parts) + SOURCE_FOOTER, envelope)
 
     except Exception as e:  # noqa: BLE001
         return await _fallback_or_raise(
-            ctx, e, query=params.query, desc=desc,
+            ctx,
+            e,
+            query=params.query,
+            desc=desc,
             dump_factory=lambda: fallback.search_bger_dump(
                 query=params.query,
                 chamber=params.chamber,
@@ -807,17 +848,24 @@ async def search_by_law_reference(params: SearchByLawInput, ctx: Context) -> Cal
             for h in result.get("hits", {}).get("hits", [])
         ]
         envelope = _build_response(params.law_reference, total, hits)
-        parts = [result_header(
-            envelope.count, total, desc,
-            match_type=envelope.match_type,
-        )]
+        parts = [
+            result_header(
+                envelope.count,
+                total,
+                desc,
+                match_type=envelope.match_type,
+            )
+        ]
         for i, hit in enumerate(hits, 1):
             parts.append(format_hit(hit, i))
         return _result("\n\n".join(parts) + SOURCE_FOOTER, envelope)
 
     except Exception as e:  # noqa: BLE001
         return await _fallback_or_raise(
-            ctx, e, query=params.law_reference, desc=desc,
+            ctx,
+            e,
+            query=params.law_reference,
+            desc=desc,
             dump_factory=lambda: fallback.search_by_law_dump(
                 law_reference=params.law_reference,
                 date_from=params.date_from,
@@ -894,10 +942,15 @@ async def list_courts(params: ListCourtsInput, ctx: Context) -> CallToolResult:
                     court_keys.append(canton_code)
                     lines.append(f"- **{canton_code}**: {name}")
 
-        return _result("\n".join(lines) + SOURCE_FOOTER, {
-            **_live_meta(),
-            "type": "court_taxonomy", "count": len(court_keys), "courts": court_keys,
-        })
+        return _result(
+            "\n".join(lines) + SOURCE_FOOTER,
+            {
+                **_live_meta(),
+                "type": "court_taxonomy",
+                "count": len(court_keys),
+                "courts": court_keys,
+            },
+        )
 
     except Exception as e:  # noqa: BLE001
         raise ToolError(api_client.handle_error(e)) from None
@@ -950,7 +1003,10 @@ async def get_recent_decisions(params: RecentDecisionsInput, ctx: Context) -> Ca
 
     except Exception as e:  # noqa: BLE001
         return await _fallback_or_raise(
-            ctx, e, query="", desc=desc,
+            ctx,
+            e,
+            query="",
+            desc=desc,
             dump_factory=lambda: fallback.recent_dump(
                 canton=params.canton.value if params.canton else None,
                 court_level=params.court_level.value if params.court_level else None,
@@ -987,11 +1043,13 @@ async def get_decision_statistics(params: DecisionStatsInput, ctx: Context) -> C
         if params.canton:
             filter_clauses.append({"term": {"hierarchy.keyword": params.canton.value}})
         if params.year:
-            filter_clauses.append({
-                "range": {"date": {"gte": f"{params.year}-01-01", "lte": f"{params.year}-12-31"}}
-            })
+            filter_clauses.append(
+                {"range": {"date": {"gte": f"{params.year}-01-01", "lte": f"{params.year}-12-31"}}}
+            )
 
-        body["query"] = {"bool": {"filter": filter_clauses}} if filter_clauses else {"match_all": {}}
+        body["query"] = (
+            {"bool": {"filter": filter_clauses}} if filter_clauses else {"match_all": {}}
+        )
 
         result = await api_client.search_decisions(body, client=_client(ctx))
         total = api_client.extract_total(result)
@@ -1006,8 +1064,15 @@ async def get_decision_statistics(params: DecisionStatsInput, ctx: Context) -> C
         canton_buckets = aggs.get("by_canton", {}).get("buckets", [])
         by_canton: list[dict] = []
         if canton_buckets:
-            lines.extend(["", "### Nach Kanton/Gericht", "", "| Kanton/Gericht | Anzahl |",
-                          "|----------------|--------|"])
+            lines.extend(
+                [
+                    "",
+                    "### Nach Kanton/Gericht",
+                    "",
+                    "| Kanton/Gericht | Anzahl |",
+                    "|----------------|--------|",
+                ]
+            )
             for bucket in canton_buckets[:20]:
                 key, cnt = bucket.get("key", ""), bucket.get("doc_count", 0)
                 by_canton.append({"key": key, "count": cnt})
@@ -1024,14 +1089,20 @@ async def get_decision_statistics(params: DecisionStatsInput, ctx: Context) -> C
                 by_year.append({"year": year_val, "count": cnt})
                 lines.append(f"| {year_val} | {cnt:,} |")
 
-        return _result("\n".join(lines) + SOURCE_FOOTER, {
-            **_live_meta(),
-            "total": total, "by_canton": by_canton, "by_year": by_year,
-        })
+        return _result(
+            "\n".join(lines) + SOURCE_FOOTER,
+            {
+                **_live_meta(),
+                "total": total,
+                "by_canton": by_canton,
+                "by_year": by_year,
+            },
+        )
 
     except Exception as e:  # noqa: BLE001
         return await _statistics_fallback(
-            ctx, e,
+            ctx,
+            e,
             canton=params.canton.value if params.canton else None,
             year=params.year,
         )
@@ -1054,7 +1125,9 @@ async def get_fallback_status(params: FallbackStatusInput, ctx: Context) -> Call
             update = {"error": True}
 
     ready = st["ready"]
-    rows_line = f"- **Datensätze im Cache:** {st['rows']:,}" if ready else "- **Datensätze im Cache:** —"
+    rows_line = (
+        f"- **Datensätze im Cache:** {st['rows']:,}" if ready else "- **Datensätze im Cache:** —"
+    )
     lines = [
         "## Offline-Fallback: Status",
         "",

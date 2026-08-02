@@ -13,16 +13,20 @@ from swiss_courts_mcp.config import Settings
 
 # --- SEC-021 / SEC-004: Egress-Allow-List ---
 
+
 def test_allowed_host_passes():
     assert_host_allowed("https://entscheidsuche.ch/_search.php")
 
 
-@pytest.mark.parametrize("url", [
-    "https://evil.example.com/x",
-    "http://entscheidsuche.ch/x",          # kein HTTPS
-    "https://169.254.169.254/latest/meta",  # Cloud-Metadata
-    "https://entscheidsuche.ch.evil.com/x",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example.com/x",
+        "http://entscheidsuche.ch/x",  # kein HTTPS
+        "https://169.254.169.254/latest/meta",  # Cloud-Metadata
+        "https://entscheidsuche.ch.evil.com/x",
+    ],
+)
 def test_disallowed_targets_blocked(url):
     with pytest.raises(EgressNotAllowedError):
         assert_host_allowed(url)
@@ -34,6 +38,7 @@ def test_allowed_hosts_is_frozenset():
 
 # --- SEC-016: sicherer Bind-Default ---
 
+
 def test_default_host_is_loopback(monkeypatch):
     for var in ("MCP_HOST", "MCP_PORT", "MCP_ALLOW_PUBLIC_BIND"):
         monkeypatch.delenv(var, raising=False)
@@ -43,6 +48,7 @@ def test_default_host_is_loopback(monkeypatch):
 
 
 # --- SEC-009: JWT-Token-Validierung ---
+
 
 def _settings(secret="test-secret-please-change-0123456789abcdef", **kw):
     return Settings(auth_enabled=True, auth_secret=secret, **kw)
@@ -91,5 +97,6 @@ def test_token_ttl_reflected_in_exp():
     s = _settings()
     token = issue_dev_token(s, sub="u", ttl_seconds=60)
     import jwt
+
     claims = jwt.decode(token, s.auth_secret, algorithms=["HS256"])
     assert claims["exp"] - int(time.time()) <= 60

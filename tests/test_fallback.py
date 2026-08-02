@@ -138,7 +138,8 @@ async def test_both_sources_dead_graceful_error(ctx, tmp_path, monkeypatch):
     empty = fallback.DumpStore(base_dir=tmp_path / "empty", record_id="empty")
     fallback.set_store(empty)
     monkeypatch.setattr(
-        empty, "ensure_ready",
+        empty,
+        "ensure_ready",
         _raise_unavailable,
     )
     try:
@@ -167,14 +168,17 @@ async def test_ensure_ready_downloads_and_builds(tmp_path):
     csv_text = FIXTURE.read_text("utf-8")
     content_url = f"https://zenodo.org/api/records/{record_id}/files/bger.csv/content"
     respx.get(f"https://zenodo.org/api/records/{record_id}").mock(
-        return_value=httpx.Response(200, json={
-            "id": int(record_id),
-            "metadata": {"version": "2024-3"},
-            "files": [
-                {"key": "codebook.pdf", "links": {"self": "https://zenodo.org/x.pdf"}},
-                {"key": "bger.csv", "links": {"self": content_url}},
-            ],
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": int(record_id),
+                "metadata": {"version": "2024-3"},
+                "files": [
+                    {"key": "codebook.pdf", "links": {"self": "https://zenodo.org/x.pdf"}},
+                    {"key": "bger.csv", "links": {"self": content_url}},
+                ],
+            },
+        )
     )
     respx.get(content_url).mock(return_value=httpx.Response(200, text=csv_text))
 
@@ -193,9 +197,15 @@ async def test_ensure_ready_downloads_and_builds(tmp_path):
 async def test_ensure_ready_no_csv_file_is_unavailable(tmp_path):
     record_id = "999"
     respx.get(f"https://zenodo.org/api/records/{record_id}").mock(
-        return_value=httpx.Response(200, json={"id": 999, "files": [
-            {"key": "only.parquet", "links": {"self": "https://zenodo.org/x.parquet"}},
-        ]})
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 999,
+                "files": [
+                    {"key": "only.parquet", "links": {"self": "https://zenodo.org/x.parquet"}},
+                ],
+            },
+        )
     )
     store = fallback.DumpStore(base_dir=tmp_path, record_id=record_id)
     with pytest.raises(fallback.FallbackUnavailableError):
@@ -219,9 +229,7 @@ async def test_get_decision_dump_resolves_docref(ctx, dump_store, monkeypatch):
 
 async def test_get_decision_dump_unresolvable_is_honest(ctx, dump_store, monkeypatch):
     monkeypatch.setenv("SWISS_COURTS_FORCE_DUMP", "1")
-    res = await server.get_court_decision(
-        GetDecisionInput(signature="CH_BGer_unknown_xyz"), ctx
-    )
+    res = await server.get_court_decision(GetDecisionInput(signature="CH_BGer_unknown_xyz"), ctx)
     env = sc(res)
     assert env["source"] == "dump"
     assert env["match_type"] == "none"
@@ -231,9 +239,7 @@ async def test_get_decision_dump_unresolvable_is_honest(ctx, dump_store, monkeyp
 
 async def test_law_reference_dump_notes_limitation(ctx, dump_store, monkeypatch):
     monkeypatch.setenv("SWISS_COURTS_FORCE_DUMP", "1")
-    res = await server.search_by_law_reference(
-        SearchByLawInput(law_reference="Art. 25 DSG"), ctx
-    )
+    res = await server.search_by_law_reference(SearchByLawInput(law_reference="Art. 25 DSG"), ctx)
     env = sc(res)
     assert env["source"] == "dump"
     # Die Fixture nennt "Art. 25 DSG" im issue des Datenschutz-Falls.

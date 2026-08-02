@@ -127,10 +127,13 @@ async def test_recent_decisions(ctx):
 
 @respx.mock
 async def test_statistics(ctx):
-    stats = {"hits": {"total": {"value": 42}}, "aggregations": {
-        "by_canton": {"buckets": [{"key": "ZH", "doc_count": 10}]},
-        "by_year": {"buckets": [{"key_as_string": "2024-01-01", "doc_count": 5}]},
-    }}
+    stats = {
+        "hits": {"total": {"value": 42}},
+        "aggregations": {
+            "by_canton": {"buckets": [{"key": "ZH", "doc_count": 10}]},
+            "by_year": {"buckets": [{"key_as_string": "2024-01-01", "doc_count": 5}]},
+        },
+    }
     respx.post(SEARCH_URL).mock(return_value=httpx.Response(200, json=stats))
     res = await server.get_decision_statistics(DecisionStatsInput(), ctx)
     assert "42" in text(res)
@@ -142,9 +145,15 @@ async def test_statistics(ctx):
 
 @respx.mock
 async def test_list_courts(ctx):
-    respx.get(FACETS_URL).mock(return_value=httpx.Response(200, json={
-        "CH_BGer": {"name": "Bundesgericht"}, "ZH": {"name": "Obergericht ZH"},
-    }))
+    respx.get(FACETS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "CH_BGer": {"name": "Bundesgericht"},
+                "ZH": {"name": "Obergericht ZH"},
+            },
+        )
+    )
     res = await server.list_courts(ListCourtsInput(), ctx)
     assert "Bundesgericht" in text(res)
     env = sc(res)

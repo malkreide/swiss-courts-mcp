@@ -290,16 +290,19 @@ class TestHandleError:
 
     def test_timeout_error(self):
         import httpx
+
         msg = handle_error(httpx.ReadTimeout("timeout"))
         assert "Timeout" in msg
 
     def test_connect_error(self):
         import httpx
+
         msg = handle_error(httpx.ConnectError("failed"))
         assert "Verbindung" in msg
 
     def test_bot_blocked_error(self):
         from swiss_courts_mcp.api_client import UpstreamBlockedError
+
         msg = handle_error(UpstreamBlockedError("Access denied by Imunify360"))
         assert "Bot-Schutz" in msg
 
@@ -321,15 +324,15 @@ class TestBotBlockDetection:
             UpstreamBlockedError,
             search_decisions,
         )
-        respx.post(SEARCH_URL).mock(
-            return_value=httpx.Response(200, json=self._BLOCK)
-        )
+
+        respx.post(SEARCH_URL).mock(return_value=httpx.Response(200, json=self._BLOCK))
         with pytest.raises(UpstreamBlockedError):
             await search_decisions({"query": {"match_all": {}}})
 
     @respx.mock
     async def test_normal_empty_response_does_not_raise(self):
         from swiss_courts_mcp.api_client import SEARCH_URL, search_decisions
+
         empty = {"hits": {"total": {"value": 0}, "hits": []}}
         respx.post(SEARCH_URL).mock(return_value=httpx.Response(200, json=empty))
         result = await search_decisions({"query": {"match_all": {}}})
@@ -353,6 +356,7 @@ async def test_live_search():
     echter, leerer ES-Response gilt weiterhin als Fehlschlag.
     """
     from swiss_courts_mcp.api_client import UpstreamBlockedError, search_decisions
+
     body = build_search_body(query="Datenschutz", size=3)
 
     attempts = 5
@@ -382,6 +386,7 @@ async def test_live_search():
 async def test_live_taxonomy():
     """Live-Test: Gerichts-Taxonomie abrufen."""
     from swiss_courts_mcp.api_client import get_court_taxonomy
+
     taxonomy = await get_court_taxonomy()
     assert taxonomy is not None
     assert len(taxonomy) > 0

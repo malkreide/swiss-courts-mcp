@@ -78,9 +78,20 @@ COVERAGE_NOTE = (
 
 # SCD-CSV-Spalten, die wir in SQLite übernehmen (Auswahl aus 31; kein Volltext).
 _COLUMNS = [
-    "docref", "date", "year", "language", "url", "topic", "issue",
-    "area_general", "area_intermediate", "area_detailed", "division",
-    "outcome", "leading_case", "source_canton",
+    "docref",
+    "date",
+    "year",
+    "language",
+    "url",
+    "topic",
+    "issue",
+    "area_general",
+    "area_intermediate",
+    "area_detailed",
+    "division",
+    "outcome",
+    "leading_case",
+    "source_canton",
 ]
 
 
@@ -111,7 +122,9 @@ def fallback_enabled() -> bool:
 
 
 def _record_id() -> str:
-    return os.environ.get("SWISS_COURTS_DUMP_RECORD", DEFAULT_RECORD_ID).strip() or DEFAULT_RECORD_ID
+    return (
+        os.environ.get("SWISS_COURTS_DUMP_RECORD", DEFAULT_RECORD_ID).strip() or DEFAULT_RECORD_ID
+    )
 
 
 def cache_dir() -> Path:
@@ -330,8 +343,12 @@ class DumpStore:
         tmp_db.replace(self.db_path)
         self.meta_path.write_text(
             json.dumps(
-                {"record_id": self.record_id, "version": version, "rows": rows,
-                 "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+                {
+                    "record_id": self.record_id,
+                    "version": version,
+                    "rows": rows,
+                    "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
                 ensure_ascii=False,
             ),
             "utf-8",
@@ -361,8 +378,12 @@ class DumpStore:
         con.close()
         self.meta_path.write_text(
             json.dumps(
-                {"record_id": self.record_id, "version": version, "rows": rows,
-                 "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+                {
+                    "record_id": self.record_id,
+                    "version": version,
+                    "rows": rows,
+                    "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
                 ensure_ascii=False,
             ),
             "utf-8",
@@ -382,7 +403,10 @@ class DumpStore:
     _reader_dialect = None
 
     def _consume_line(
-        self, con: sqlite3.Connection, line: str, header: list[str] | None,
+        self,
+        con: sqlite3.Connection,
+        line: str,
+        header: list[str] | None,
         batch: list[tuple],
     ) -> tuple[list[str] | None, int]:
         """Parst eine CSV-Zeile; erste Zeile ist der Header."""
@@ -403,33 +427,55 @@ class DumpStore:
         except ValueError:
             year = None
         blob = " ".join(
-            filter(None, [
-                vals["docref"], vals["topic"], vals["issue"],
-                vals["area_detailed"], vals["area_intermediate"],
-                vals["area_general"], vals["leading_case"],
-            ])
+            filter(
+                None,
+                [
+                    vals["docref"],
+                    vals["topic"],
+                    vals["issue"],
+                    vals["area_detailed"],
+                    vals["area_intermediate"],
+                    vals["area_general"],
+                    vals["leading_case"],
+                ],
+            )
         ).lower()
-        batch.append((
-            vals["docref"], vals["date"], year, vals["language"], vals["url"],
-            vals["topic"], vals["issue"], vals["area_general"],
-            vals["area_intermediate"], vals["area_detailed"], vals["division"],
-            vals["outcome"], vals["leading_case"], vals["source_canton"], blob,
-        ))
+        batch.append(
+            (
+                vals["docref"],
+                vals["date"],
+                year,
+                vals["language"],
+                vals["url"],
+                vals["topic"],
+                vals["issue"],
+                vals["area_general"],
+                vals["area_intermediate"],
+                vals["area_detailed"],
+                vals["division"],
+                vals["outcome"],
+                vals["leading_case"],
+                vals["source_canton"],
+                blob,
+            )
+        )
         return header, 1
 
     @staticmethod
     def _flush(con: sqlite3.Connection, batch: list[tuple]) -> None:
         if not batch:
             return
-        con.executemany(
-            "INSERT INTO decisions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", batch
-        )
+        con.executemany("INSERT INTO decisions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", batch)
         batch.clear()
 
     # -- Abfragen ----------------------------------------------------------
 
     def _query(
-        self, terms: list[str], date_from: str | None, date_to: str | None, limit: int,
+        self,
+        terms: list[str],
+        date_from: str | None,
+        date_to: str | None,
+        limit: int,
         order: str = "date DESC",
     ) -> tuple[int, list[dict]]:
         where = ["1=1"]
@@ -458,11 +504,17 @@ class DumpStore:
         return total, hits
 
     def search(
-        self, query: str | None, date_from: str | None, date_to: str | None, limit: int,
+        self,
+        query: str | None,
+        date_from: str | None,
+        date_to: str | None,
+        limit: int,
     ) -> tuple[int, list[dict]]:
         return self._query(_terms(query), date_from, date_to, limit)
 
-    def recent(self, date_from: str | None, date_to: str | None, limit: int) -> tuple[int, list[dict]]:
+    def recent(
+        self, date_from: str | None, date_to: str | None, limit: int
+    ) -> tuple[int, list[dict]]:
         return self._query([], date_from, date_to, limit)
 
     def get_by_docref(self, candidates: list[str]) -> dict | None:
@@ -515,9 +567,22 @@ class DumpStore:
 
 
 def _row_to_hit(row: tuple) -> dict:
-    (docref, date, year, language, url, topic, issue, area_general,
-     area_intermediate, area_detailed, division, outcome, leading_case,
-     source_canton) = row
+    (
+        docref,
+        date,
+        year,
+        language,
+        url,
+        topic,
+        issue,
+        area_general,
+        area_intermediate,
+        area_detailed,
+        division,
+        outcome,
+        leading_case,
+        source_canton,
+    ) = row
 
     references: list[str] = []
     if leading_case:
@@ -608,8 +673,13 @@ async def _ready_store(client: httpx.AsyncClient | None) -> DumpStore:
 
 
 async def search_dump(
-    *, query: str | None, canton: str | None, court_level: str | None,
-    date_from: str | None, date_to: str | None, limit: int,
+    *,
+    query: str | None,
+    canton: str | None,
+    court_level: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    limit: int,
     client: httpx.AsyncClient | None = None,
 ) -> DumpResult:
     """Volltext-nahe Suche im Dump (topic/issue/Rechtsgebiet)."""
@@ -622,8 +692,13 @@ async def search_dump(
 
 
 async def search_bger_dump(
-    *, query: str, chamber: str | None, date_from: str | None, date_to: str | None,
-    limit: int, client: httpx.AsyncClient | None = None,
+    *,
+    query: str,
+    chamber: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    limit: int,
+    client: httpx.AsyncClient | None = None,
 ) -> DumpResult:
     """BGer-Suche im Dump (der Dump ist ohnehin BGer-only)."""
     combined = f"{query} {chamber}" if chamber else query
@@ -633,7 +708,11 @@ async def search_bger_dump(
 
 
 async def search_by_law_dump(
-    *, law_reference: str, date_from: str | None, date_to: str | None, limit: int,
+    *,
+    law_reference: str,
+    date_from: str | None,
+    date_to: str | None,
+    limit: int,
     client: httpx.AsyncClient | None = None,
 ) -> DumpResult:
     """Gesetzesreferenz im Dump — nur soweit in topic/issue erwähnt (eingeschränkt)."""
@@ -647,7 +726,10 @@ async def search_by_law_dump(
 
 
 async def recent_dump(
-    *, canton: str | None, court_level: str | None, limit: int,
+    *,
+    canton: str | None,
+    court_level: str | None,
+    limit: int,
     client: httpx.AsyncClient | None = None,
 ) -> DumpResult:
     """Neueste Entscheide aus dem Dump (chronologisch)."""
@@ -679,7 +761,9 @@ def _docref_candidates(signature: str) -> list[str]:
 
 
 async def get_decision_dump(
-    *, signature: str, client: httpx.AsyncClient | None = None,
+    *,
+    signature: str,
+    client: httpx.AsyncClient | None = None,
 ) -> dict | None:
     """Einzel-Lookup im Dump per docref. Gibt None zurück, wenn nicht auflösbar."""
     store = await _ready_store(client)
@@ -687,7 +771,10 @@ async def get_decision_dump(
 
 
 async def statistics_dump(
-    *, canton: str | None, year: int | None, client: httpx.AsyncClient | None = None,
+    *,
+    canton: str | None,
+    year: int | None,
+    client: httpx.AsyncClient | None = None,
 ) -> dict:
     """Statistik aus dem Dump. Bei Kantonsfilter: out_of_coverage."""
     oob = out_of_coverage_note(canton, None)

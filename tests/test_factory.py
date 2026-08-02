@@ -75,15 +75,21 @@ def test_http_server_without_auth_builds():
 
 async def test_all_tools_registered():
     from mcp.server.mcpserver import MCPServer
+
     mcp = MCPServer("t")
     register_tools(mcp)
     register_prompts(mcp)
     tools = await mcp.list_tools()
     names = {t.name for t in tools}
     assert names == {
-        "search_court_decisions", "get_court_decision", "search_bger_decisions",
-        "search_by_law_reference", "list_courts", "get_recent_decisions",
-        "get_decision_statistics", "get_fallback_status",
+        "search_court_decisions",
+        "get_court_decision",
+        "search_bger_decisions",
+        "search_by_law_reference",
+        "list_courts",
+        "get_recent_decisions",
+        "get_decision_statistics",
+        "get_fallback_status",
     }
     # ARCH-008: zweites Primitiv (Prompt) vorhanden.
     prompts = await mcp.list_prompts()
@@ -92,6 +98,7 @@ async def test_all_tools_registered():
 
 async def test_tool_annotations_read_only():
     from mcp.server.mcpserver import MCPServer
+
     mcp = MCPServer("t")
     register_tools(mcp)
     tools = await mcp.list_tools()
@@ -105,6 +112,7 @@ async def test_tools_have_no_auto_output_schema():
     # SDK-002: structured_output=False — die Tools liefern eigenes
     # structuredContent via CallToolResult, kein auto-generiertes Schema.
     from mcp.server.mcpserver import MCPServer
+
     mcp = MCPServer("t")
     register_tools(mcp)
     for t in await mcp.list_tools():

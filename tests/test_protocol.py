@@ -89,9 +89,7 @@ def _initialize(requested: str) -> str | None:
         return json.loads(body).get("result", {}).get("protocolVersion")
 
 
-@pytest.mark.parametrize(
-    "requested", ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"]
-)
+@pytest.mark.parametrize("requested", ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"])
 def test_handshake_echoes_supported_client_versions(requested):
     """Ältere Clients behalten ihre Revision — die Migration bricht sie nicht."""
     assert _initialize(requested) == requested

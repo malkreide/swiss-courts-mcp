@@ -39,9 +39,12 @@ Markdown unsichtbar:
     ```
     <!-- gates:end -->
 
-Welche Datei welche Region führen muss, steht unten in `REGIONS`. Die
-Live-Region fehlt in beiden CONTRIBUTING mit Absicht: dort steht die
-Checkliste vor einem Pull Request, und die Live-Suite ist kein PR-Gate.
+Welche Datei welche Region führen muss, steht unten in `REGIONS`. Zurzeit
+führen alle fünf Dateien beide Regionen. Dass die Live-Suite kein PR-Gate
+ist, macht sie nicht unwichtig — sie ist das Einzige, was einen geänderten
+Vertrag mit der Quelle überhaupt bemerkt, und wer den Client anfasst, sollte
+sie von Hand kennen. Der Unterschied steht in der Prosa neben dem Block,
+nicht in seiner Abwesenheit.
 
 Hintergrund: Die Gate-Liste ist zweimal auseinandergelaufen. Die CI lintete
 `src/ tests/ scripts/`, während vier Dateien `src/ tests/` nannten, und
@@ -117,13 +120,7 @@ class Region:
 
 REGIONS = (
     Region(name="gates", workflow="ci.yml", job="test", docs=ALL_DOCS, every_step=True),
-    Region(
-        name="live",
-        workflow="live.yml",
-        job="live",
-        docs=("CLAUDE.md", "README.md", "README.de.md"),
-        every_step=False,
-    ),
+    Region(name="live", workflow="live.yml", job="live", docs=ALL_DOCS, every_step=False),
 )
 
 

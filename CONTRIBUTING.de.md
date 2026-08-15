@@ -41,8 +41,20 @@ Bitte geben Sie an:
    scheitert an einer in `src/` hartkodierten Version. Der Gate-Doku-Check
    hält die Liste oben gegen `ci.yml` — ein neues Gate in der CI ohne
    Eintrag in der Doku macht den Build rot.
-6. Committen Sie nach [Conventional Commits](https://www.conventionalcommits.org/): `feat: neues Tool hinzufügen`
-7. Pushen Sie und öffnen Sie einen Pull Request
+6. Optional — die Live-Suite gegen die echte Quelle fahren:
+   <!-- live:start -->
+   ```bash
+   PYTHONPATH=src pytest tests/ -m live
+   ```
+   <!-- live:end -->
+   Kein Gate: Sie fragt `entscheidsuche.ch` wirklich ab, ist deshalb aus der
+   PR-CI ausgeschlossen und läuft stattdessen nach Plan (`live.yml`). Von
+   Hand lohnt sie, wenn Sie den Client, das Parsing oder sonst etwas
+   anfassen, das von der Form der Antworten abhängt — genau das sehen die
+   gemockten Unit-Tests nicht. Rot heisst hier nicht automatisch «unser
+   Fehler»: erst die Quelle abfragen, dann einordnen.
+7. Committen Sie nach [Conventional Commits](https://www.conventionalcommits.org/): `feat: neues Tool hinzufügen`
+8. Pushen Sie und öffnen Sie einen Pull Request
 
 ---
 

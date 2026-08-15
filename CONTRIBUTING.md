@@ -41,8 +41,20 @@ Please include:
    and fails on a version hardcoded in `src/`. The gate-doc check holds the
    list above against `ci.yml`, so adding a gate to CI without documenting
    it turns the build red.
-6. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat: add new tool`
-7. Push and open a Pull Request
+6. Optional — run the live suite against the real source:
+   <!-- live:start -->
+   ```bash
+   PYTHONPATH=src pytest tests/ -m live
+   ```
+   <!-- live:end -->
+   Not a gate: it hits `entscheidsuche.ch` for real, so it is excluded from
+   pull request CI and runs on a schedule (`live.yml`) instead. Worth doing
+   by hand when you touch the client, the parsing, or anything that depends
+   on the shape of the source's responses — that is exactly what the mocked
+   unit tests cannot see. Red here does not automatically mean "our bug":
+   query the source first, then judge.
+7. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat: add new tool`
+8. Push and open a Pull Request
 
 ---
 

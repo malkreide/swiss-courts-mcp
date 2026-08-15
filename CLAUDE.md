@@ -68,12 +68,21 @@ python scripts/check_gate_docs.py
 
 `scripts/` gehört zum Lint-Ziel, und `ruff format --check` ist ein eigenes
 Gate. Diese Liste wird erzwungen: `check_gate_docs.py` hält sie gegen die
-`run:`-Zeilen in `ci.yml`, hier wie in README und CONTRIBUTING. Ein neues Gate
-in der CI macht die Doku rot, bis es drinsteht — die Marker drumherum sind
-dafür da, nicht dekorativ.
+`run:`-Zeilen in `ci.yml` — hier, in beiden READMEs und in beiden
+CONTRIBUTING —, und den Live-Block unten gegen `live.yml`. Ein neues Gate
+macht die Doku rot, bis es drinsteht; die Marker drumherum sind dafür da,
+nicht dekorativ.
 
 **Live-Tests:** `.github/workflows/live.yml` läuft geplant, `cron: "0 4 * * *"`,
 plus `workflow_dispatch`. DRIFT-005 ist damit erfüllt — Live-Tests sind hier
-nicht bloss per `-m "not live"` ausgeschlossen. `schedule` greift nur auf dem
-Default-Branch: Änderungen an dem Workflow wirken erst nach dem Merge, vorher
-von Hand auslösen.
+nicht bloss per `-m "not live"` ausgeschlossen. Kein Gate: sie fragen die
+echte Quelle ab und laufen nicht auf Pull Requests. Von Hand:
+
+<!-- live:start -->
+```bash
+PYTHONPATH=src pytest tests/ -v -m live
+```
+<!-- live:end -->
+
+`schedule` greift nur auf dem Default-Branch: Änderungen an dem Workflow
+wirken erst nach dem Merge, vorher per `workflow_dispatch` auslösen.

@@ -29,9 +29,13 @@ Bitte geben Sie an:
    pytest tests/ -v -m "not live"
    ruff check src/ tests/ scripts/
    ruff format --check src/ tests/ scripts/
+   python scripts/check_version_sync.py
    ```
-   Das sind exakt die Ziele der CI — `scripts/` eingeschlossen, und der
-   Format-Check ist ein eigenes Gate.
+   Das sind exakt die vier Gates der CI — `scripts/` ist ein Lint-Ziel,
+   und Format-Check wie Versions-Sync sind je ein eigenes Gate. Der
+   Versions-Sync greift nur, wenn Sie die Version anfassen: Er hält
+   `pyproject.toml` gegen `server.json` und die README-Badges und
+   scheitert an einer in `src/` hartkodierten Version.
 6. Committen Sie nach [Conventional Commits](https://www.conventionalcommits.org/): `feat: neues Tool hinzufügen`
 7. Pushen Sie und öffnen Sie einen Pull Request
 

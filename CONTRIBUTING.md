@@ -29,9 +29,13 @@ Please include:
    pytest tests/ -v -m "not live"
    ruff check src/ tests/ scripts/
    ruff format --check src/ tests/ scripts/
+   python scripts/check_version_sync.py
    ```
-   These are the exact targets CI uses — `scripts/` included, and the
-   format check is its own gate.
+   These are the exact four gates CI runs — `scripts/` is a lint target,
+   and the format check and the version sync are each their own gate.
+   The version sync only bites when you touch the version: it holds
+   `pyproject.toml` against `server.json` and the README badges, and
+   fails on a version hardcoded in `src/`.
 6. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat: add new tool`
 7. Push and open a Pull Request
 

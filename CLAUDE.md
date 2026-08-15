@@ -45,16 +45,13 @@ Ein Codex-Review auf einem PR wird beantwortet oder behoben, nie ignoriert.
 
 ## Dieses Repo
 
-Default-Branch ist `master`, nicht `main` — der Befehl oben lautet hier
+Default-Branch ist `master`, nicht `main` — der Frische-Check oben lautet hier
 `git fetch origin master && git rev-list --count HEAD..origin/master`.
 
-**ruff:** `ruff==0.16.1`, hart gepinnt, und zwar an genau einer Stelle — der
-`dev`-Extra in `pyproject.toml`. Eine `.pre-commit-config.yaml` gibt es nicht,
-und die CI installiert ruff über dieselbe Extra. `pip install -e ".[dev]"`
-liefert also die CI-Version; kein Nachziehen nötig. Beim Anheben (Dependabot)
-ändert sich nur diese eine Zeile.
+ruff ist auf `0.16.1` gepinnt, an genau einer Stelle (`dev`-Extra in
+`pyproject.toml`); `pip install -e ".[dev]"` liefert damit die CI-Version.
 
-**Gates, wörtlich aus `ci.yml`** (Matrix: Python 3.11 / 3.12 / 3.13):
+Gates, wörtlich aus `ci.yml` (Python 3.11 / 3.12 / 3.13):
 
 <!-- gates:start -->
 ```bash
@@ -66,17 +63,8 @@ python scripts/check_gate_docs.py
 ```
 <!-- gates:end -->
 
-`scripts/` gehört zum Lint-Ziel, und `ruff format --check` ist ein eigenes
-Gate. Diese Liste wird erzwungen: `check_gate_docs.py` hält sie gegen die
-`run:`-Zeilen in `ci.yml` — hier, in beiden READMEs und in beiden
-CONTRIBUTING —, und den Live-Block unten gegen `live.yml`. Ein neues Gate
-macht die Doku rot, bis es drinsteht; die Marker drumherum sind dafür da,
-nicht dekorativ.
-
-**Live-Tests:** `.github/workflows/live.yml` läuft geplant, `cron: "0 4 * * *"`,
-plus `workflow_dispatch`. DRIFT-005 ist damit erfüllt — Live-Tests sind hier
-nicht bloss per `-m "not live"` ausgeschlossen. Kein Gate: sie fragen die
-echte Quelle ab und laufen nicht auf Pull Requests. Von Hand:
+Live-Tests laufen geplant (`live.yml`, `cron: "0 4 * * *"`) — DRIFT-005
+erfüllt, nicht bloss per `-m "not live"` ausgeschlossen. Kein Gate, von Hand:
 
 <!-- live:start -->
 ```bash
@@ -84,5 +72,6 @@ PYTHONPATH=src pytest tests/ -v -m live
 ```
 <!-- live:end -->
 
-`schedule` greift nur auf dem Default-Branch: Änderungen an dem Workflow
-wirken erst nach dem Merge, vorher per `workflow_dispatch` auslösen.
+Beide Blöcke sind erzwungen: `check_gate_docs.py` hält sie gegen `ci.yml` und
+`live.yml`. Ein neues Gate macht die Doku rot, bis es drinsteht. Das Übrige
+steht in README und CONTRIBUTING.

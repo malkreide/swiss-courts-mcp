@@ -363,6 +363,10 @@ PYTHONPATH=src pytest tests/ -v -m live
 ```
 <!-- live:end -->
 
+Sonderfall `live.yml`: GitHub beachtet `schedule` nur auf dem Default-Branch,
+Änderungen wirken also erst nach dem Merge — vorher von Hand auslösen
+(`workflow_dispatch`).
+
 Die Offline-Fallback-Tests nutzen eine kleine mitgelieferte Schema-Fixture
 (`tests/fixtures/scd_sample.csv`) und mocken den Zenodo-Download mit `respx` —
 der volle ~120-MB-Dump wird nie committet oder in der CI heruntergeladen.

@@ -393,6 +393,10 @@ PYTHONPATH=src pytest tests/ -v -m live
 ```
 <!-- live:end -->
 
+Editing `live.yml` is a special case: GitHub only honours `schedule` on the
+default branch, so changes take effect after the merge — trigger the workflow
+by hand (`workflow_dispatch`) to test them before that.
+
 The offline-fallback tests use a small committed schema fixture
 (`tests/fixtures/scd_sample.csv`) and mock the Zenodo download with `respx` —
 the full ~120 MB dump is never committed or downloaded in CI.

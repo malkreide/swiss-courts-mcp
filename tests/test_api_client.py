@@ -51,17 +51,34 @@ class TestBuildSearchBody:
         assert body["query"] == {"match_all": {}}
 
     def test_canton_filter(self):
+        """Hier stand `assert any("hierarchy.keyword" in str(f) ...)`.
+
+        Das Unterfeld gibt es im Index nicht. Elasticsearch beantwortet einen
+        `term` darauf mit HTTP 200 und null Treffern — kein Fehler, keine
+        Warnung —, und der Test hielt genau das fest. Gemessen am 15.08.2026
+        fuer «Datenschutz» + ZH: `hierarchy.keyword` → 0, `hierarchy` → 460.
+        """
         body = build_search_body(query="Mietrecht", canton="ZH")
-        bool_q = body["query"]["bool"]
-        assert "filter" in bool_q
-        assert any("hierarchy.keyword" in str(f) for f in bool_q["filter"])
+        filter_clauses = body["query"]["bool"]["filter"]
+        assert {"term": {"hierarchy": "ZH"}} in filter_clauses, filter_clauses
+        assert "hierarchy.keyword" not in str(filter_clauses)
 
     def test_court_level_filter(self):
+        """Hier stand `assert any("prefix" in str(f) or "should" in str(f) ...)`.
+
+        Das war auf der kaputten Fassung genauso wahr: sie schickte
+        `{"prefix": {"_id": …}}`, was Elasticsearch ablehnt («Can only use
+        prefix queries on keyword, text and wildcard fields — not on [_id]»).
+        47 von 53 Shards scheiterten, die Antwort kam mit HTTP 200 und
+        `hits.total = 0`. Der Test prueft jetzt das Feld, nicht die Bauform.
+        """
         body = build_search_body(query="Test", court_level="bundesgericht")
-        bool_q = body["query"]["bool"]
-        filter_clauses = bool_q.get("filter", [])
-        # Should have prefix filter for CH_BGer and CH_BGE
-        assert any("prefix" in str(f) or "should" in str(f) for f in filter_clauses)
+        filter_clauses = body["query"]["bool"]["filter"]
+        assert "_id" not in str(filter_clauses), filter_clauses
+        gewuenscht = [{"prefix": {"hierarchy": "CH_BGer"}}, {"prefix": {"hierarchy": "CH_BGE"}}]
+        assert {"bool": {"should": gewuenscht, "minimum_should_match": 1}} in filter_clauses, (
+            filter_clauses
+        )
 
     def test_date_range(self):
         body = build_search_body(

@@ -378,9 +378,9 @@ PYTHONPATH=src pytest tests/ -v -m "not live"
 # Live API tests (real entscheidsuche.ch + Zenodo)
 PYTHONPATH=src pytest tests/ -v -m live
 
-# Linting
-ruff check src/ tests/
-ruff format src/ tests/
+# Linting — same targets as CI; `scripts/` is linted too
+ruff check src/ tests/ scripts/
+ruff format --check src/ tests/ scripts/
 ```
 
 The offline-fallback tests use a small committed schema fixture

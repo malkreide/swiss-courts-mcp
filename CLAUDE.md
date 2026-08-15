@@ -48,11 +48,11 @@ Ein Codex-Review auf einem PR wird beantwortet oder behoben, nie ignoriert.
 Default-Branch ist `master`, nicht `main` — der Befehl oben lautet hier
 `git fetch origin master && git rev-list --count HEAD..origin/master`.
 
-**ruff:** CI pinnt `ruff==0.16.1` (`.github/workflows/ci.yml`). Eine
-`.pre-commit-config.yaml` gibt es nicht; die zweite Quelle ist die
-`dev`-Extra in `pyproject.toml`, und die sagt `ruff>=0.15.15` — eine
-Untergrenze, kein Pin. `pip install -e ".[dev]"` installiert also *nicht*
-die CI-Version. Nach dem Dev-Install explizit `pip install ruff==0.16.1`.
+**ruff:** `ruff==0.16.1`, hart gepinnt, und zwar an genau einer Stelle — der
+`dev`-Extra in `pyproject.toml`. Eine `.pre-commit-config.yaml` gibt es nicht,
+und die CI installiert ruff über dieselbe Extra. `pip install -e ".[dev]"`
+liefert also die CI-Version; kein Nachziehen nötig. Beim Anheben (Dependabot)
+ändert sich nur diese eine Zeile.
 
 **Gates, wörtlich aus `ci.yml`** (Matrix: Python 3.11 / 3.12 / 3.13):
 
@@ -63,8 +63,9 @@ ruff format --check src/ tests/ scripts/
 python scripts/check_version_sync.py
 ```
 
-`scripts/` gehört zum Lint-Ziel. README und CONTRIBUTING nennen nur
-`src/ tests/` — wer das kopiert, sieht Lint-Fehler erst in der CI.
+`scripts/` gehört zum Lint-Ziel, und `ruff format --check` ist ein eigenes
+Gate. README und CONTRIBUTING nennen dieselben Ziele — bleibt das so, wenn
+sich die CI ändert.
 
 **Live-Tests:** `.github/workflows/live.yml` läuft geplant, `cron: "0 4 * * *"`,
 plus `workflow_dispatch`. DRIFT-005 ist damit erfüllt — Live-Tests sind hier

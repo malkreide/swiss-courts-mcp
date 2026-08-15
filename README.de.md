@@ -243,47 +243,13 @@ neben den Tools).
 └──────────────────────────┘   └───────────────────────────────────────┘
 ```
 
-### Architektur-Entscheid
-
-Dieser Server nutzt **Architektur C (Metadaten-only Offline-Fallback),
-geliefert per Lazy-Download (Mechanik von Option A)** — entschieden nach einer
-Live-Probe am 19.07.2026:
-
-- **Immer Live-first.** entscheidsuche.ch bleibt im Erfolgsfall die einzige
-  Quelle; das Live-Verhalten ist unverändert. Der Fallback greift nur bei einem
-  Verfügbarkeitsfehler (Bot-Block, HTTP 5xx/429, Timeout, Connect-Error) oder
-  wenn erzwungen.
-- **Quelle: der SCD-Dump** (Zenodo `10.5281/zenodo.14867950`, Version 2024-3,
-  **CC BY 4.0**), der ~120-MB-CSV — nur Metadaten/Regesten, **kein Volltext**.
-  Der 375-MB-Volltext-Parquet samt schwerer `pyarrow`-Abhängigkeit wurde
-  verworfen: ein partieller Notnagel rechtfertigt den Footprint nicht, und
-  Volltext würde eine Äquivalenz vorgaukeln, die es nicht gibt (nur BGer).
-- **Ein zweiter Kandidat wurde verworfen:** Zenodo `5529712`
-  («SwissJudgmentPrediction») ist CC BY-**NC-SA** 4.0 — unvereinbar mit diesem
-  MIT-Projekt.
-- **Konsequenzen:** Der CSV wird lokal gecacht (`platformdirs`) und via SQLite
-  durchsucht; die Update-Erkennung nutzt die Zenodo-Versions-API (`conceptrecid`
-  7793043). Jede Antwort deklariert `source` (`live`/`dump`); Dump-Antworten
-  ergänzen ein `coverage_note`. Die CC-BY-Attribution wird **im Tool-Output**
-  mitgeliefert, nicht nur hier.
-
-### Offline-Fallback
-
-Der Fallback ist ein **Verhalten der bestehenden Tools**, kein zusätzliches
-Such-Tool (nur `get_fallback_status` kam neu hinzu, für Transparenz). Er ist
-**partiell, nicht äquivalent** zur Live-Quelle:
-
-- Nur **Bundesgericht** (BGer/BGE), **2007–2024**, **kein Volltext**.
-- **Bundesverwaltungsgericht, Bundesstrafgericht und alle 26 Kantone sind NICHT
-  abgedeckt.** Eine kantonale oder Nicht-BGer-Anfrage im Dump-Modus liefert eine
-  explizite «nicht abgedeckt»-Antwort — nie ein stilles leeres Resultat.
-- `get_court_decision` ist im Dump-Modus best-effort: SCD-Aktenzeichen
-  (`docref`, z.B. `1C_517/2016`) unterscheiden sich von entscheidsuche-Signaturen,
-  daher werden manche Lookups ehrlich als nicht auflösbar gemeldet.
-- Ist weder Live noch Dump verfügbar, liefern die Tools einen klaren,
-  handlungsleitenden Fehler (kein Crash, kein Stacktrace).
-
-Cache und Abdeckung jederzeit mit `get_fallback_status` einsehbar.
+Immer Live-first: Der Offline-Dump greift nur bei einem Verfügbarkeitsfehler
+(Bot-Block, HTTP 5xx/429, Timeout) oder wenn erzwungen. Er ist ein Verhalten
+der bestehenden Tools, kein zusätzliches Such-Tool — warum diese Quelle und
+nicht die Volltext-Variante, steht in
+[ADR 0002](docs/adr/0002-offline-fallback.md); was er abdeckt und was nicht,
+unter [Bekannte Einschränkungen](#bekannte-einschränkungen). Cache jederzeit
+mit `get_fallback_status` einsehbar.
 
 ---
 
@@ -328,21 +294,21 @@ Live-Quelle:
 - **Gesetzesreferenz-Suche** trifft offline nur Referenzen, die im Betreff/Regest
   (`topic`/`issue`) des Entscheids genannt sind — es gibt keinen Offline-Index
   zitierter Gesetze.
+- **`get_court_decision` ist offline best-effort:** SCD-Aktenzeichen (`docref`,
+  z.B. `1C_517/2016`) unterscheiden sich von entscheidsuche-Signaturen, daher
+  werden manche Lookups ehrlich als nicht auflösbar gemeldet.
 - Antworten deklarieren ihre Herkunft stets über `source` (`live`/`dump`) und ein
-  `coverage_note`; der Server reduziert die Abdeckung nie stillschweigend.
+  `coverage_note`; der Server reduziert die Abdeckung nie stillschweigend — eine
+  nicht abgedeckte Anfrage bekommt eine explizite «nicht abgedeckt»-Antwort, nie
+  ein stilles leeres Resultat.
 
 ---
 
 ## Tests
 
-Unit-Tests mocken HTTP mit `respx`; Live-Tests laufen in einem separaten
-nächtlichen Workflow ([`live.yml`](.github/workflows/live.yml)) und blockieren
-PRs nie.
-
-Vom Projekt-Root mit `PYTHONPATH=src` ausführen:
-
-Die fünf Gates, die die CI fährt — `check_gate_docs.py` hält diese Liste
-gegen `ci.yml`, sie kann also nicht still veralten:
+Unit-Tests mocken HTTP mit `respx`. Vom Projekt-Root ausführen. Die fünf
+Gates, die die CI fährt — `check_gate_docs.py` hält diese Liste gegen
+`ci.yml`, sie kann also nicht still veralten:
 
 <!-- gates:start -->
 ```bash
@@ -354,8 +320,8 @@ python scripts/check_gate_docs.py
 ```
 <!-- gates:end -->
 
-Die Live-Tests sind kein Gate — sie fragen die echte Quelle ab und laufen
-nach Plan (`live.yml`), nicht auf Pull Requests:
+Die Live-Tests sind kein Gate — sie fragen die echte Quelle ab und laufen nach
+Plan ([`live.yml`](.github/workflows/live.yml)), nicht auf Pull Requests:
 
 <!-- live:start -->
 ```bash
@@ -367,9 +333,9 @@ Sonderfall `live.yml`: GitHub beachtet `schedule` nur auf dem Default-Branch,
 Änderungen wirken also erst nach dem Merge — vorher von Hand auslösen
 (`workflow_dispatch`).
 
-Die Offline-Fallback-Tests nutzen eine kleine mitgelieferte Schema-Fixture
-(`tests/fixtures/scd_sample.csv`) und mocken den Zenodo-Download mit `respx` —
-der volle ~120-MB-Dump wird nie committet oder in der CI heruntergeladen.
+Die Offline-Fallback-Tests mocken den Zenodo-Download mit `respx` und nutzen
+eine kleine mitgelieferte Fixture — der ~120-MB-Dump wird in der CI nie
+heruntergeladen.
 
 ---
 

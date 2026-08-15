@@ -49,6 +49,16 @@ class EgressNotAllowedError(RuntimeError):
     """Ziel-Host steht nicht auf der Egress-Allow-List."""
 
 
+class UpstreamQueryError(RuntimeError):
+    """Die Quelle hat die Abfrage nicht (vollstaendig) ausgefuehrt.
+
+    Abgegrenzt von `UpstreamBlockedError` (Bot-Schutz) und von einem echten
+    Negativbefund: hier hat Elasticsearch geantwortet, aber Teile der Abfrage
+    abgelehnt. Das Ergebnis ist unbrauchbar und darf nicht als «keine Treffer»
+    weitergereicht werden.
+    """
+
+
 class UpstreamBlockedError(RuntimeError):
     """entscheidsuche.ch hat die Anfrage per Bot-Schutz (Imunify360) blockiert.
 
@@ -142,14 +152,35 @@ def build_search_body(
         )
 
     # Kantons-Filter (über hierarchy-Feld)
+    #
+    # `hierarchy`, nicht `hierarchy.keyword`: das Unterfeld gibt es im Index
+    # nicht. Elasticsearch beantwortet einen `term` auf ein unbekanntes Feld
+    # mit HTTP 200 und null Treffern — kein Fehler, keine Warnung. Der
+    # Kantonsfilter hat damit *immer* nichts geliefert. Gemessen am 15.08.2026
+    # für «Datenschutz» + Kanton ZH: `hierarchy.keyword` → 0,
+    # `hierarchy` → 460.
     if canton:
-        filter_clauses.append({"term": {"hierarchy.keyword": canton}})
+        filter_clauses.append({"term": {"hierarchy": canton}})
 
     # Gerichts-Ebene oder spezifische Prefixes
     prefixes = court_prefixes or (COURT_LEVEL_PREFIXES.get(court_level, []) if court_level else [])
     if prefixes:
-        # Mehrere Prefixes → should (OR)
-        prefix_clauses = [{"prefix": {"_id": p}} for p in prefixes]
+        # `hierarchy`, nicht `_id`.
+        #
+        # Elasticsearch lehnt Prefix-Abfragen auf `_id` ab: «Can only use
+        # prefix queries on keyword, text and wildcard fields — not on [_id]
+        # which is of type [_id]». Jeder Shard mit Dokumenten warf eine
+        # `query_shard_exception`; die Antwort kam mit HTTP 200,
+        # `hits.total = 0` und `_shards.failed = 47` von 53 zurück. Damit hat
+        # `search_bger_decisions` nie einen Entscheid gefunden, und jeder
+        # `court_level`-Filter ebenso wenig — als sauberer Negativbefund
+        # verkleidet.
+        #
+        # `hierarchy` ist ein Keyword-Array und trägt genau diese Präfixe
+        # (`["CH", "CH_BGer", "CH_BGer_001"]`). Gemessen am 15.08.2026 für
+        # «Datenschutz»: `_id`-Prefix → ES-Fehler, `hierarchy`-Prefix
+        # CH_BGer → 466, CH_BGE → 91, beide zusammen → 557.
+        prefix_clauses = [{"prefix": {"hierarchy": p}} for p in prefixes]
         if len(prefix_clauses) == 1:
             filter_clauses.append(prefix_clauses[0])
         else:
@@ -371,6 +402,39 @@ def _raise_if_blocked(data: object) -> None:
             raise UpstreamBlockedError(message)
 
 
+def _raise_if_shards_failed(data: object) -> None:
+    """Wirft, wenn Shards die Abfrage abgelehnt haben.
+
+    Elasticsearch beantwortet eine Abfrage, die auf einzelnen Shards scheitert,
+    trotzdem mit HTTP 200 — die Trefferzahl ist dann die der *übrigen* Shards.
+    Ohne diese Prüfung sieht ein Totalausfall wie ein sauberer Negativbefund
+    aus: genau so blieb der `_id`-Prefix-Fehler unbemerkt, der 47 von 53 Shards
+    scheitern liess und `hits.total = 0` meldete.
+
+    Ein Modell kann «dazu gibt es keine Rechtsprechung» nicht von «die Abfrage
+    wurde nicht ausgeführt» unterscheiden. Der Server muss es können.
+    """
+    if not isinstance(data, dict):
+        return
+    shards = data.get("_shards")
+    if not isinstance(shards, dict):
+        return
+    gescheitert = shards.get("failed") or 0
+    if not gescheitert:
+        return
+    gruende = {
+        str((f.get("reason") or {}).get("reason", ""))[:200]
+        for f in (shards.get("failures") or [])
+        if isinstance(f, dict)
+    }
+    raise UpstreamQueryError(
+        f"Die Suche wurde nur teilweise ausgeführt: {gescheitert} von "
+        f"{shards.get('total', '?')} Shards haben die Abfrage abgelehnt. "
+        f"Das Ergebnis ist NICHT als «keine Treffer» zu lesen. "
+        f"Grund: {'; '.join(sorted(gruende)) or 'von der Quelle nicht genannt'}"
+    )
+
+
 async def search_decisions(body: dict, client: httpx.AsyncClient | None = None) -> dict:
     """POST-Suche an entscheidsuche.ch mit Elasticsearch-Body."""
     assert_host_allowed(SEARCH_URL)
@@ -379,6 +443,7 @@ async def search_decisions(body: dict, client: httpx.AsyncClient | None = None) 
         response.raise_for_status()
         data = response.json()
     _raise_if_blocked(data)
+    _raise_if_shards_failed(data)
     return data
 
 
@@ -475,6 +540,13 @@ def handle_error(e: Exception) -> str:
     if isinstance(e, EgressNotAllowedError):
         log.error("egress_blocked", error=str(e))
         return "Fehler: Ziel-Adresse ist nicht erlaubt (Egress-Policy)."
+    if isinstance(e, UpstreamQueryError):
+        # Kein maskierter Interner-Fehler: das ist eine Aussage ueber die
+        # Quelle, und das Modell muss sie von «keine Treffer» unterscheiden
+        # koennen. Der Text der Ausnahme nennt keine Internals — er nennt, wie
+        # viele Shards abgelehnt haben und warum.
+        log.warning("upstream_query_rejected", error=str(e))
+        return f"Fehler: {e}"
     if isinstance(e, UpstreamBlockedError):
         log.warning("upstream_bot_blocked")
         return (

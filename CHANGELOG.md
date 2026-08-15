@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Behoben / Fixed
+
+- **`search_bger_decisions` hat nie einen Entscheid gefunden.** Der
+  Gerichtsfilter schickte `{"prefix": {"_id": "CH_BGer"}}`. Elasticsearch lehnt
+  Prefix-Abfragen auf `_id` ab — «Can only use prefix queries on keyword, text
+  and wildcard fields — not on [_id] which is of type [_id]». 47 von 53 Shards
+  warfen eine `query_shard_exception`, und die Antwort kam trotzdem mit
+  HTTP 200 und `hits.total = 0` zurück. Das Tool meldete daraufhin «Keine
+  Bundesgerichtsentscheide gefunden» samt Suchtipps: ein Totalausfall in der
+  Form eines sauberen Negativbefunds. Betroffen war jeder `court_level`-Filter,
+  nicht nur das BGer-Tool.
+
+  Gefiltert wird jetzt über `hierarchy` — ein Keyword-Array, das genau diese
+  Präfixe trägt (`["CH", "CH_BGer", "CH_BGer_001"]`). Gemessen am 15.08.2026
+  für «Datenschutz»: vorher 0 Treffer, nachher 557.
+
+- **Der Kantonsfilter ebenso.** Er las `hierarchy.keyword`; dieses Unterfeld
+  gibt es im Index nicht. Ein `term` auf ein unbekanntes Feld beantwortet
+  Elasticsearch mit HTTP 200 und null Treffern — ohne Fehler, ohne Warnung,
+  ohne Shard-Ausfall. Über `hierarchy`: «Datenschutz» + ZH von 0 auf 460.
+
+  Beide Defekte waren in `tests/test_api_client.py` festgeschrieben:
+  `assert any("hierarchy.keyword" in str(f) …)` prüfte den falschen Feldnamen,
+  und `assert any("prefix" in str(f) or "should" in str(f) …)` war auf der
+  kaputten Bauform genauso wahr.
+
+### Hinzugefügt / Added
+
+- **`_raise_if_shards_failed` (`UpstreamQueryError`).** Elasticsearch
+  beantwortet eine Abfrage, die auf einzelnen Shards scheitert, mit HTTP 200 und
+  der Trefferzahl der *übrigen* Shards. Genau so blieb der `_id`-Fehler
+  unbemerkt. Ein Modell kann «dazu gibt es keine Rechtsprechung» nicht von «die
+  Abfrage wurde nicht ausgeführt» unterscheiden — der Server muss es können. Die
+  Meldung nennt die Zahl der gescheiterten Shards und den Grund und wird nicht
+  als interner Fehler maskiert.
+
+- **Aufgezeichnete Fixtures** in `tests/fixtures/` — acht echte Antworten, eine
+  je Abfrageform. Ein Suchendpunkt, aber Volltext, Signatur-Lookup,
+  Gesetzesreferenz, Kantonsfilter, Taxonomie, Datums-Sortierung und
+  Jahres-Statistik gehen alle an dieselbe URL; der Elasticsearch-Rumpf gehört
+  deshalb in den Schlüssel. Herkunft, Datum, Auswahlregel und SHA-256 je Datei
+  in `tests/fixtures/PROVENANCE.md`, neu aufzeichnen mit
+  `scripts/record_fixtures.py`, geladen über `tests/fixture_data.py`.
+  Portfolio-Konvention, gleich wie in `meteoswiss-mcp` und
+  `swiss-statistics-mcp`.
+
+  Gekürzt ist nur die Zahl der Treffer in `hits.hits`; `hits.total` bleibt
+  stehen (die Quelle meint damit den ganzen Index), und die Gerichtstaxonomie
+  wie die Statistik-Aggregation bleiben ganz ungekürzt — der Server filtert und
+  summiert *in* ihnen.
+
+  Personendaten: Gerichte publizieren anonymisiert, entscheidsuche.ch spiegelt
+  das. Die aufgezeichnete Entscheidung trägt 146 Anonymisierungsmarker
+  (`A._`, `B._`) und keinen Klarnamen;
+  `test_der_entscheid_ist_anonymisiert` hält das fest.
+
 ### Geändert / Changed
 - **Migration auf die `mcp` 2.x Server-API.** Pin von `>=1.28.1,<2` auf
   `>=2.0.0,<3`. Die Untergrenze ist hart: 2.0.0 hat `mcp.server.fastmcp` ohne

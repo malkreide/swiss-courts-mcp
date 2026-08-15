@@ -27,8 +27,11 @@ Bitte geben Sie an:
 5. Stellen Sie sicher, dass Tests und Linting bestehen:
    ```bash
    pytest tests/ -v -m "not live"
-   ruff check src/ tests/
+   ruff check src/ tests/ scripts/
+   ruff format --check src/ tests/ scripts/
    ```
+   Das sind exakt die Ziele der CI — `scripts/` eingeschlossen, und der
+   Format-Check ist ein eigenes Gate.
 6. Committen Sie nach [Conventional Commits](https://www.conventionalcommits.org/): `feat: neues Tool hinzufügen`
 7. Pushen Sie und öffnen Sie einen Pull Request
 

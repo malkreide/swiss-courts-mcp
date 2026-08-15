@@ -348,9 +348,9 @@ PYTHONPATH=src pytest tests/ -v -m "not live"
 # Live-API-Tests (echtes entscheidsuche.ch + Zenodo)
 PYTHONPATH=src pytest tests/ -v -m live
 
-# Linting
-ruff check src/ tests/
-ruff format src/ tests/
+# Linting — dieselben Ziele wie die CI; `scripts/` wird mitgeprüft
+ruff check src/ tests/ scripts/
+ruff format --check src/ tests/ scripts/
 ```
 
 Die Offline-Fallback-Tests nutzen eine kleine mitgelieferte Schema-Fixture

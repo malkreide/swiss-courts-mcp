@@ -27,8 +27,11 @@ Please include:
 5. Ensure tests and linting pass:
    ```bash
    pytest tests/ -v -m "not live"
-   ruff check src/ tests/
+   ruff check src/ tests/ scripts/
+   ruff format --check src/ tests/ scripts/
    ```
+   These are the exact targets CI uses — `scripts/` included, and the
+   format check is its own gate.
 6. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat: add new tool`
 7. Push and open a Pull Request
 

@@ -61,7 +61,14 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "respx>=0.23.1",
-    "ruff>=0.15.15",
+    # Harter Pin, kein Bereich: ruff ist ein Gate, kein Hilfsmittel. Ein
+    # Upstream-Release aendert den Default-Regelsatz oder den Formatter und
+    # meldet dann Abweichungen an Code, den niemand angefasst hat. Der Pin
+    # steht NUR hier — die CI installiert ruff ueber genau diese Extra, damit
+    # lokal und in der CI dieselbe Version laeuft. Zwei Pins, die
+    # uebereinstimmen muessen, sind eine Drift-Quelle und keine Absicherung.
+    # Updates via Dependabot.
+    "ruff==0.16.1",
     "pyjwt[crypto]>=2.13.0",
 ]
 

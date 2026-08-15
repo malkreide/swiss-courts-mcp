@@ -387,10 +387,11 @@ python scripts/check_gate_docs.py
 The live tests are not a gate — they hit the real source and run on a
 schedule (`live.yml`), not on pull requests:
 
+<!-- live:start -->
 ```bash
-# Live API tests (real entscheidsuche.ch + Zenodo)
 PYTHONPATH=src pytest tests/ -v -m live
 ```
+<!-- live:end -->
 
 The offline-fallback tests use a small committed schema fixture
 (`tests/fixtures/scd_sample.csv`) and mock the Zenodo download with `respx` —

@@ -25,17 +25,22 @@ Please include:
 3. Install dev dependencies: `pip install -e ".[dev]"`
 4. Make your changes and add tests
 5. Ensure tests and linting pass:
+   <!-- gates:start -->
    ```bash
-   pytest tests/ -v -m "not live"
+   pytest tests/ -m "not live"
    ruff check src/ tests/ scripts/
    ruff format --check src/ tests/ scripts/
    python scripts/check_version_sync.py
+   python scripts/check_gate_docs.py
    ```
-   These are the exact four gates CI runs — `scripts/` is a lint target,
-   and the format check and the version sync are each their own gate.
-   The version sync only bites when you touch the version: it holds
-   `pyproject.toml` against `server.json` and the README badges, and
-   fails on a version hardcoded in `src/`.
+   <!-- gates:end -->
+   These are the exact five gates CI runs — `scripts/` is a lint target,
+   and the format check, the version sync and the gate-doc check are each
+   their own gate. The version sync only bites when you touch the version:
+   it holds `pyproject.toml` against `server.json` and the README badges,
+   and fails on a version hardcoded in `src/`. The gate-doc check holds the
+   list above against `ci.yml`, so adding a gate to CI without documenting
+   it turns the build red.
 6. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat: add new tool`
 7. Push and open a Pull Request
 

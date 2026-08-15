@@ -341,16 +341,25 @@ PRs nie.
 
 Vom Projekt-Root mit `PYTHONPATH=src` ausführen:
 
+Die fünf Gates, die die CI fährt — `check_gate_docs.py` hält diese Liste
+gegen `ci.yml`, sie kann also nicht still veralten:
+
+<!-- gates:start -->
 ```bash
-# Unit-Tests (HTTP gemockt) — das läuft in der CI
-PYTHONPATH=src pytest tests/ -v -m "not live"
-
-# Live-API-Tests (echtes entscheidsuche.ch + Zenodo)
-PYTHONPATH=src pytest tests/ -v -m live
-
-# Linting — dieselben Ziele wie die CI; `scripts/` wird mitgeprüft
+PYTHONPATH=src pytest tests/ -m "not live"
 ruff check src/ tests/ scripts/
 ruff format --check src/ tests/ scripts/
+python scripts/check_version_sync.py
+python scripts/check_gate_docs.py
+```
+<!-- gates:end -->
+
+Die Live-Tests sind kein Gate — sie fragen die echte Quelle ab und laufen
+nach Plan (`live.yml`), nicht auf Pull Requests:
+
+```bash
+# Live-API-Tests (echtes entscheidsuche.ch + Zenodo)
+PYTHONPATH=src pytest tests/ -v -m live
 ```
 
 Die Offline-Fallback-Tests nutzen eine kleine mitgelieferte Schema-Fixture

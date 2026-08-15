@@ -371,16 +371,25 @@ blocking PRs.
 
 Run from the project root with `PYTHONPATH=src`:
 
+The five gates CI runs — `check_gate_docs.py` holds this list against
+`ci.yml`, so it cannot quietly fall behind:
+
+<!-- gates:start -->
 ```bash
-# Unit tests (HTTP mocked) — what CI runs
-PYTHONPATH=src pytest tests/ -v -m "not live"
-
-# Live API tests (real entscheidsuche.ch + Zenodo)
-PYTHONPATH=src pytest tests/ -v -m live
-
-# Linting — same targets as CI; `scripts/` is linted too
+PYTHONPATH=src pytest tests/ -m "not live"
 ruff check src/ tests/ scripts/
 ruff format --check src/ tests/ scripts/
+python scripts/check_version_sync.py
+python scripts/check_gate_docs.py
+```
+<!-- gates:end -->
+
+The live tests are not a gate — they hit the real source and run on a
+schedule (`live.yml`), not on pull requests:
+
+```bash
+# Live API tests (real entscheidsuche.ch + Zenodo)
+PYTHONPATH=src pytest tests/ -v -m live
 ```
 
 The offline-fallback tests use a small committed schema fixture

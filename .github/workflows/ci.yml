@@ -40,3 +40,8 @@ jobs:
 
       - name: Versions-Sync (pyproject ↔ server.json / README / src)
         run: python scripts/check_version_sync.py
+
+      # Haelt die Gate-Liste in der Doku gegen die Schritte dieses Jobs. Ohne
+      # das laeuft die Doku wieder auseinander — zweimal passiert.
+      - name: Gate-Doku (CLAUDE.md / README / CONTRIBUTING ↔ ci.yml)
+        run: python scripts/check_gate_docs.py

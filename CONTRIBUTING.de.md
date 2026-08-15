@@ -25,17 +25,22 @@ Bitte geben Sie an:
 3. Installieren Sie die Dev-Abhängigkeiten: `pip install -e ".[dev]"`
 4. Nehmen Sie Ihre Änderungen vor und ergänzen Sie Tests
 5. Stellen Sie sicher, dass Tests und Linting bestehen:
+   <!-- gates:start -->
    ```bash
-   pytest tests/ -v -m "not live"
+   pytest tests/ -m "not live"
    ruff check src/ tests/ scripts/
    ruff format --check src/ tests/ scripts/
    python scripts/check_version_sync.py
+   python scripts/check_gate_docs.py
    ```
-   Das sind exakt die vier Gates der CI — `scripts/` ist ein Lint-Ziel,
-   und Format-Check wie Versions-Sync sind je ein eigenes Gate. Der
-   Versions-Sync greift nur, wenn Sie die Version anfassen: Er hält
-   `pyproject.toml` gegen `server.json` und die README-Badges und
-   scheitert an einer in `src/` hartkodierten Version.
+   <!-- gates:end -->
+   Das sind exakt die fünf Gates der CI — `scripts/` ist ein Lint-Ziel,
+   und Format-Check, Versions-Sync und Gate-Doku-Check sind je ein eigenes
+   Gate. Der Versions-Sync greift nur, wenn Sie die Version anfassen: Er
+   hält `pyproject.toml` gegen `server.json` und die README-Badges und
+   scheitert an einer in `src/` hartkodierten Version. Der Gate-Doku-Check
+   hält die Liste oben gegen `ci.yml` — ein neues Gate in der CI ohne
+   Eintrag in der Doku macht den Build rot.
 6. Committen Sie nach [Conventional Commits](https://www.conventionalcommits.org/): `feat: neues Tool hinzufügen`
 7. Pushen Sie und öffnen Sie einen Pull Request
 

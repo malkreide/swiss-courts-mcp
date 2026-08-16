@@ -4,10 +4,18 @@ Dokumentierte Befehle gegen die halten, die die Workflows wirklich fahren.
 Zwei Regionen, zwei Verträge — weil `ci.yml` und `live.yml` nicht dasselbe
 versprechen.
 
-**Region `gates`** — Quelle ist der Job `test` in `ci.yml`. Jeder Schritt, der
-kein Installationsbefehl ist, gilt als Gate und muss in jeder Doku-Datei
-stehen. Gate-Schritte bleiben dafür einzeilig; ein mehrzeiliges `run:` bricht
-den Check ab, statt zu raten, welche Zeile das Gate ist.
+**Region `gates`** — Quelle ist der Job `test` in `ci.yml`. Ein Schritt ist
+ein Gate, wenn seine `run:`-Zeile die Marke `# gate` trägt; dann muss er in
+jeder Doku-Datei stehen. Gate-Schritte bleiben dafür einzeilig; ein
+mehrzeiliges `run:` bricht den Check ab, statt zu raten, welche Zeile das
+Gate ist.
+
+Die Marke ist eine Positivliste, und das hat einen Preis: Ein neues Gate,
+das niemand markiert, wird nicht eingefordert. Zwei Dinge federn das ab —
+die übersprungenen Schritte stehen in der Ausgabe (auch wenn alles grün
+ist), und wer die Marke von einem *bestehenden* Gate entfernt, macht den
+Check trotzdem rot: Der Befehl steht dann in der Doku, aber nicht mehr in
+der Gate-Liste, und der Abgleich läuft in beide Richtungen.
 
 **Region `live`** — Quelle ist der Job `live` in `live.yml`. Hier ist fast
 alles CI-Maschinerie: `set +e`, `--junitxml`, `tee`, die Einordnung des
@@ -77,12 +85,18 @@ ALL_DOCS = (
     "CONTRIBUTING.de.md",
 )
 
-# Aufbau, kein Gate. Was hier nicht steht, gilt als Gate — ein neuer
-# Prüfschritt in der CI wird also automatisch einforderbar, statt still
-# undokumentiert zu bleiben. Ein neuer *Aufbau*-Schritt schlägt dafür hier
-# auf und will ergänzt werden; laut scheitern ist besser als still nichts
-# prüfen.
-SETUP_PREFIXES = ("pip install", "pip3 install", "python -m pip", "uv pip install")
+# Positivliste statt Ausschlussliste: Ein Schritt ist ein Gate, wenn seine
+# `run:`-Zeile die Marke trägt — als YAML-Kommentar direkt am Befehl:
+#
+#     - name: Lint
+#       run: ruff check src/ tests/ scripts/  # gate
+#
+# Die Marke steht an der Zeile, um die es geht, nicht in einer Liste hier;
+# YAML wirft sie beim Parsen weg, GitHub sieht sie nie. Alles ohne Marke
+# gilt als Beiwerk und wird übersprungen — aber nicht stillschweigend: Die
+# übersprungenen Schritte stehen in der Ausgabe, auch im Erfolgsfall.
+GATE_TAG = "gate"
+_TRAILING_COMMENT = re.compile(r"\s+#\s*(?P<tag>.*?)\s*$")
 
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _NOISE = {"-v", "--verbose"}
@@ -101,9 +115,13 @@ class Region:
     workflow: str
     job: str
     docs: tuple[str, ...]
-    # True: jeder Nicht-Aufbau-Schritt zählt, Gate-Schritte müssen einzeilig
-    # sein. False: nur die pytest-Aufrufe, mehrzeilige Blöcke sind erlaubt.
-    every_step: bool
+    # "marked": nur Schritte mit der Gate-Marke, dafür einzeilig erzwungen.
+    # "pytest": nur die pytest-Aufrufe, mehrzeilige Blöcke sind erlaubt.
+    select: str
+
+    @property
+    def marked(self) -> bool:
+        return self.select == "marked"
 
     @property
     def start(self) -> str:
@@ -119,8 +137,8 @@ class Region:
 
 
 REGIONS = (
-    Region(name="gates", workflow="ci.yml", job="test", docs=ALL_DOCS, every_step=True),
-    Region(name="live", workflow="live.yml", job="live", docs=ALL_DOCS, every_step=False),
+    Region(name="gates", workflow="ci.yml", job="test", docs=ALL_DOCS, select="marked"),
+    Region(name="live", workflow="live.yml", job="live", docs=ALL_DOCS, select="pytest"),
 )
 
 
@@ -172,14 +190,35 @@ def job_body(path: Path, job: str) -> list[str]:
     return body
 
 
-def run_commands(region: Region) -> list[str]:
-    """Alle Befehlszeilen aus den `run:`-Schritten eines Jobs.
+def split_tag(value: str) -> tuple[str, str | None]:
+    """Befehl und YAML-Kommentar am Zeilenende trennen.
+
+    `ruff check src/  # gate` → `("ruff check src/", "gate")`. Ein `#` in
+    Anführungszeichen ist kein Kommentar — deshalb erst zerlegen, dann
+    entscheiden.
+    """
+    try:
+        tokens = shlex.split(value, comments=True)
+    except ValueError:
+        return value, None
+    command = " ".join(tokens) if tokens else ""
+    match = _TRAILING_COMMENT.search(value)
+    if match and command and not value.startswith("#"):
+        # Nur wenn der Kommentar wirklich abgetrennt wurde — sonst stand das
+        # `#` in Anführungszeichen und gehört zum Befehl.
+        if len(shlex.split(value)) != len(tokens):
+            return value[: match.start()].strip(), match.group("tag")
+    return value, None
+
+
+def run_commands(region: Region) -> list[tuple[str, str | None]]:
+    """Befehlszeilen der `run:`-Schritte eines Jobs, je mit ihrer Marke.
 
     Nur `run:` — `with:`/`script:` bleiben aussen vor, sonst liest der Check
     JavaScript-Text als Befehl.
     """
     lines = job_body(region.path, region.job)
-    commands: list[str] = []
+    commands: list[tuple[str, str | None]] = []
     index = 0
     while index < len(lines):
         match = _RUN.match(lines[index])
@@ -188,10 +227,10 @@ def run_commands(region: Region) -> list[str]:
             continue
         value = match.group("value").strip()
         if value not in _BLOCK_SCALAR:
-            commands.append(value)
+            commands.append(split_tag(value))
             index += 1
             continue
-        if region.every_step:
+        if region.marked:
             # Ein mehrzeiliges `run:` liesse sich nur raten — welche Zeile ist
             # das Gate, welche Beiwerk? Lieber hier laut scheitern als der
             # Doku eine Zusicherung geben, die niemand geprüft hat.
@@ -210,7 +249,7 @@ def run_commands(region: Region) -> list[str]:
                 break
             block.append(candidate)
             index += 1
-        commands.extend(join_continuations(block))
+        commands.extend((line, None) for line in join_continuations(block))
     return commands
 
 
@@ -222,24 +261,25 @@ def invokes_pytest(command: str) -> bool:
     return any(token == "pytest" or token.endswith("/pytest") for token in tokens)
 
 
-def workflow_commands(region: Region) -> list[str]:
-    found = []
-    for command in run_commands(region):
+def workflow_commands(region: Region) -> tuple[list[str], list[str]]:
+    """(gewählte Befehle, übersprungene Befehle) für eine Region."""
+    found: list[str] = []
+    skipped: list[str] = []
+    for command, tag in run_commands(region):
         text = command.strip()
         if not text or text.startswith("#"):
             continue
-        if region.every_step:
-            if text.startswith(SETUP_PREFIXES):
-                continue
-            found.append(text)
-        elif invokes_pytest(text):
-            found.append(text)
+        chosen = tag == GATE_TAG if region.marked else invokes_pytest(text)
+        (found if chosen else skipped).append(text)
     if not found:
+        hint = (
+            f"Trägt kein Schritt die Marke `# {GATE_TAG}`?" if region.marked else "Parser kaputt?"
+        )
         sys.exit(
             f"FEHLER: In Job {region.job!r} ({region.path.relative_to(ROOT)}) steht kein "
-            f"einziger Befehl für die Region {region.name!r}. Parser kaputt?"
+            f"einziger Befehl für die Region {region.name!r}. {hint}"
         )
-    return found
+    return found, skipped
 
 
 def doc_commands(path: Path, region: Region) -> list[str]:
@@ -259,8 +299,8 @@ def doc_commands(path: Path, region: Region) -> list[str]:
     return commands
 
 
-def check(region: Region) -> tuple[list[str], list[str]]:
-    expected = workflow_commands(region)
+def check(region: Region) -> tuple[list[str], list[str], list[str]]:
+    expected, skipped = workflow_commands(region)
     wanted = {normalise(c) for c in expected}
 
     problems: list[str] = []
@@ -277,14 +317,18 @@ def check(region: Region) -> tuple[list[str], list[str]]:
                 f"[{region.name}] {name}: nennt einen Befehl, den der Workflow "
                 f"nicht fährt — {extra}"
             )
-    return expected, problems
+    return expected, skipped, problems
 
 
 def main() -> int:
     problems: list[str] = []
     summary: list[str] = []
+    # Was der Check NICHT geprüft hat, gehört in dieselbe Ausgabe wie das,
+    # was er geprüft hat. Eine Auswahl, die man nicht sieht, liest sich wie
+    # Vollständigkeit.
+    skipped_report: list[str] = []
     for region in REGIONS:
-        expected, found = check(region)
+        expected, skipped, found = check(region)
         problems.extend(found)
         summary.append(
             f"{region.name}: {len(expected)} aus {region.path.relative_to(ROOT)} "
@@ -292,6 +336,12 @@ def main() -> int:
         )
         if found:
             summary[-1] += "  <- Abweichung"
+        # Nur für die markierte Region: Dort kann ein übersprungener Schritt
+        # ein vergessenes Gate sein. In der Live-Region ist das Übersprungene
+        # per Konstruktion Beiwerk (`set +e`, `echo`, die Einordnung) — jede
+        # Zeile davon zu melden, verdeckt den einen Fall, der zählt.
+        if region.marked:
+            skipped_report.extend(skipped)
 
     if problems:
         print("DRIFT: Die dokumentierten Befehle weichen von den Workflows ab.", file=sys.stderr)
@@ -300,7 +350,7 @@ def main() -> int:
         print("", file=sys.stderr)
         for region in REGIONS:
             print(f"{region.path.relative_to(ROOT)}, Job {region.job!r}:", file=sys.stderr)
-            for command in workflow_commands(region):
+            for command in workflow_commands(region)[0]:
                 print(f"  {command}", file=sys.stderr)
         print("", file=sys.stderr)
         print(
@@ -311,6 +361,8 @@ def main() -> int:
         return 1
 
     print(f"Gate-Doku OK ({'; '.join(summary)})")
+    for command in skipped_report:
+        print(f"  übersprungen, keine Marke `# {GATE_TAG}`: {command}")
     return 0
 
 

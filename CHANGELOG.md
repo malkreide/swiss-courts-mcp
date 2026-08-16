@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] - 2026-08-16
+
+Minor, nicht Patch: Der Server läuft nach der Migration nicht mehr auf
+`mcp` 1.x (`>=2.0.0,<3`, harte Untergrenze), und der Shard-Wächter macht aus
+einem stillen Null-Treffer eine Fehlermeldung — beides ändert Verhalten, das
+ein Aufrufer sieht.
 
 ### Behoben / Fixed
 

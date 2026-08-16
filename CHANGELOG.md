@@ -126,6 +126,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   ist es in fünf Schwester-Servern des Portfolios passiert. Die Version kommt
   jetzt aus `importlib.metadata`. Abgesichert durch `tests/test_version.py`.
 
+### Hinzugefügt / Added
+
+- **`CLAUDE.md`.** Portfolio-weite Konventionen plus ein kurzer repo-eigener
+  Teil: Default-Branch `master` statt `main`, die ruff-Version, die Gate-Liste
+  und der Live-Aufruf. 78 Zeilen; eine lange Datei wird überlesen und ist dann
+  schlechter als keine.
+
+- **`scripts/check_gate_docs.py` — fünftes Gate.** Es hält die dokumentierten
+  Befehle gegen die, die die Workflows wirklich fahren: `CLAUDE.md`, beide
+  READMEs und beide CONTRIBUTING gegen `ci.yml` und `live.yml`. Als Gate zählt,
+  wessen Befehlszeile die Marke `# gate` trägt — in `ci.yml` ein YAML-Kommentar,
+  im Skript-Block von `live.yml` ein Shell-Kommentar; beides erreicht das
+  Ausgeführte nicht, nachgemessen mit PyYAML und mit `${PIPESTATUS[0]}` in der
+  Zeile darunter.
+
+  Verglichen wird nach einer kleinen, dokumentierten Normalisierung (führende
+  Env-Zuweisungen, `-v`, CI-Beiwerk wie `--junitxml` und Pipes fallen weg);
+  alles andere zählt, in beide Richtungen. Der Abgleich meldet also auch einen
+  Befehl, den die Doku nennt und der Workflow nicht fährt. Was übersprungen
+  wurde, steht in jeder Ausgabe — auch im Erfolgsfall, damit eine Auswahl nicht
+  wie Vollständigkeit aussieht.
+
+  Grenze, bewusst in Kauf genommen: Ein neues Gate, das niemand markiert, wird
+  nicht eingefordert. Es erscheint aber im Übersprungen-Bericht, und wer die
+  Marke von einem *bestehenden* Gate entfernt, macht den Check trotzdem rot.
+
+- **`docs/adr/0002-offline-fallback.md`.** Der Architektur-Entscheid zum
+  Offline-Fallback — verworfene Kandidaten (der 375-MB-Volltext-Parquet, das
+  NC-SA-lizenzierte Zenodo-`5529712`) und die Lizenzgründe. Das ist
+  Entscheidungsgeschichte, keine Bedienungsanleitung; sie stand vorher in
+  beiden READMEs.
+
+- **Aufgezeichnete pytest-Reports** in `tests/fixtures/junit/` — je eine Form,
+  die `classify_live_run.py` unterscheidet: grün, Fehlschlag, Setup-Fehler,
+  alle übersprungen, null Tests. Aufgezeichnet am 16.08.2026 mit pytest 9.1.1,
+  Herkunft und SHA-256 in `PROVENANCE.md`.
+
+  Die dreizehn bestehenden Tests der Einordnung schreiben ihr XML von Hand und
+  belegen damit nur, dass sie zur Annahme ihres Autors passt. Hiesse ein Zähler
+  `error` statt `errors`, blieben alle grün, während der geplante Lauf
+  danebengreift — und diese Einordnung entscheidet, ob ein Issue aufgeht oder
+  zugeht. Nachgewiesen an einer simulierten Format-Drift: Sie bringt nur den
+  aufgezeichneten Test zu Fall, die handgeschriebenen bleiben grün.
+
+### Behoben / Fixed
+
+- **Die dokumentierte Gate-Liste war unvollständig.** Die CI lintet
+  `src/ tests/ scripts/`, README, README.de und beide CONTRIBUTING nannten
+  `src/ tests/`; `ruff format --check` und `check_version_sync.py` fehlten ganz.
+  Wer die Doku kopierte, fuhr das Gate unvollständig und sah die Differenz erst
+  rot in der CI — an Code, den er nicht angefasst hatte. Alle fünf Dateien
+  nennen jetzt alle fünf Gates, und `check_gate_docs.py` hält sie dort.
+
+- **ruff war nur in der CI gepinnt.** `ci.yml` installierte `ruff==0.16.1`, die
+  `dev`-Extra sagte `ruff>=0.15.15` — eine Untergrenze. `pip install -e ".[dev]"`,
+  der Befehl aus CONTRIBUTING, lieferte damit die jeweils neueste Version, und
+  eine andere Version meldet Abweichungen an Code, den niemand angefasst hat.
+  Der Pin steht jetzt in `pyproject.toml`, und nur dort; der separate
+  `pip install`-Schritt in `ci.yml` ist entfallen, weil zwei Pins, die
+  übereinstimmen müssen, die Drift-Quelle sind und nicht ihre Absicherung.
+
+### Geändert / Changed
+
+- **`CLAUDE.md` und beide READMEs gekürzt** — 88 → 78, 464 → 393 und 413 → 379
+  Zeilen. Dasselbe Prinzip überall: die Anweisung bleibt, die Begründung zieht
+  dorthin, wo man sie sucht. Der Offline-Fallback stand zweimal in derselben
+  README (unter *Architecture* und unter *Known Limitations*, beide Male mit
+  Gerichtsumfang, Zeitraum und «kein Volltext») und ist in den Einschränkungen
+  zusammengelegt; der Verzeichnisbaum unter *Project Structure* ist weg, weil er
+  mit jedem Modul veraltet und wiederholt, was GitHub ohnehin zeigt; die Notiz,
+  warum die 8 Tools in `server.py` liegen, steht jetzt in beiden CONTRIBUTING,
+  bei den Leuten, die sie angeht.
+
 ## [0.3.1] - 2026-08-02
 
 ### Fixed

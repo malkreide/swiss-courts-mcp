@@ -1,14 +1,19 @@
 """
 Dokumentierte Befehle gegen die halten, die die Workflows wirklich fahren.
 
-Zwei Regionen, zwei Verträge — weil `ci.yml` und `live.yml` nicht dasselbe
-versprechen.
+Zwei Regionen, eine Regel: Verglichen wird, was die Marke `# gate` trägt.
 
-**Region `gates`** — Quelle ist der Job `test` in `ci.yml`. Ein Schritt ist
-ein Gate, wenn seine `run:`-Zeile die Marke `# gate` trägt; dann muss er in
-jeder Doku-Datei stehen. Gate-Schritte bleiben dafür einzeilig; ein
-mehrzeiliges `run:` bricht den Check ab, statt zu raten, welche Zeile das
-Gate ist.
+**Region `gates`** — Quelle ist der Job `test` in `ci.yml`. Gate-Schritte
+bleiben einzeilig; ein mehrzeiliges `run:` bricht den Check ab, statt zu
+raten, welche Zeile das Gate ist.
+
+**Wo die Marke steht, entscheidet, was sie ist.** In `ci.yml` sitzt sie an
+einer einzeiligen `run:`-Zeile und ist ein YAML-Kommentar — der Parser wirft
+sie weg, GitHub sieht sie nie. In `live.yml` sitzt sie in einem
+Block-Skalar; dort ist sie kein YAML mehr, sondern landet im Shell-Skript
+und ist ein Shell-Kommentar. Beides ist für das Ausgeführte folgenlos, aber
+aus zwei verschiedenen Gründen — nachgemessen, inklusive `${PIPESTATUS[0]}`
+in der Zeile danach.
 
 Die Marke ist eine Positivliste, und das hat einen Preis: Ein neues Gate,
 das niemand markiert, wird nicht eingefordert. Zwei Dinge federn das ab —
@@ -20,10 +25,10 @@ der Gate-Liste, und der Abgleich läuft in beide Richtungen.
 **Region `live`** — Quelle ist der Job `live` in `live.yml`. Hier ist fast
 alles CI-Maschinerie: `set +e`, `--junitxml`, `tee`, die Einordnung des
 Ergebnisses, das Issue-Skript. Nichts davon fährt ein Mensch von Hand, und
-nichts davon gehört in eine Doku. Was zählt, ist die eine Frage, die eine
-Doku beantworten muss: *wie rufe ich die Live-Suite lokal auf?* Also wird
-genau der pytest-Aufruf verglichen, und die Plumbing-Teile fallen weg
-(alles ab der ersten Pipe, `--junitxml=…`, `2>&1`).
+nichts davon gehört in eine Doku. Markiert ist deshalb genau die eine Zeile,
+die eine Doku beantworten muss: *wie rufe ich die Live-Suite lokal auf?* Die
+Plumbing-Teile an dieser Zeile fallen beim Vergleich weg (alles ab der
+ersten Pipe, `--junitxml=…`, `2>&1`).
 
 Verglichen wird in beiden Regionen nach einer kleinen, bewussten
 Normalisierung — sonst erzwingt der Check Kosmetik statt Inhalt:
@@ -115,13 +120,11 @@ class Region:
     workflow: str
     job: str
     docs: tuple[str, ...]
-    # "marked": nur Schritte mit der Gate-Marke, dafür einzeilig erzwungen.
-    # "pytest": nur die pytest-Aufrufe, mehrzeilige Blöcke sind erlaubt.
-    select: str
-
-    @property
-    def marked(self) -> bool:
-        return self.select == "marked"
+    # Mehrzeiliges `run:` erlaubt? In `ci.yml` nicht — ein Gate-Schritt ist
+    # eine Zeile, sonst müsste der Check raten. In `live.yml` unvermeidlich:
+    # Der pytest-Aufruf steht dort zwangsläufig in einem Block zwischen
+    # `set +e` und der Auswertung des Exit-Codes.
+    allow_block: bool
 
     @property
     def start(self) -> str:
@@ -137,8 +140,8 @@ class Region:
 
 
 REGIONS = (
-    Region(name="gates", workflow="ci.yml", job="test", docs=ALL_DOCS, select="marked"),
-    Region(name="live", workflow="live.yml", job="live", docs=ALL_DOCS, select="pytest"),
+    Region(name="gates", workflow="ci.yml", job="test", docs=ALL_DOCS, allow_block=False),
+    Region(name="live", workflow="live.yml", job="live", docs=ALL_DOCS, allow_block=True),
 )
 
 
@@ -211,14 +214,19 @@ def split_tag(value: str) -> tuple[str, str | None]:
     return value, None
 
 
-def run_commands(region: Region) -> list[tuple[str, str | None]]:
-    """Befehlszeilen der `run:`-Schritte eines Jobs, je mit ihrer Marke.
+def run_steps(region: Region) -> list[list[tuple[str, str | None]]]:
+    """Die `run:`-Schritte eines Jobs, je als Liste von (Befehl, Marke).
+
+    Gruppiert nach Schritt, nicht nach Zeile: Ein Block-Skalar ist EIN
+    Schritt mit mehreren Zeilen. Das entscheidet später, was als
+    «übersprungen» gemeldet wird — ein nicht markierter Schritt ist eine
+    Meldung wert, die zwölf `echo`-Zeilen in seinem Innern nicht.
 
     Nur `run:` — `with:`/`script:` bleiben aussen vor, sonst liest der Check
     JavaScript-Text als Befehl.
     """
     lines = job_body(region.path, region.job)
-    commands: list[tuple[str, str | None]] = []
+    steps: list[list[tuple[str, str | None]]] = []
     index = 0
     while index < len(lines):
         match = _RUN.match(lines[index])
@@ -227,10 +235,10 @@ def run_commands(region: Region) -> list[tuple[str, str | None]]:
             continue
         value = match.group("value").strip()
         if value not in _BLOCK_SCALAR:
-            commands.append(split_tag(value))
+            steps.append([split_tag(value)])
             index += 1
             continue
-        if region.marked:
+        if not region.allow_block:
             # Ein mehrzeiliges `run:` liesse sich nur raten — welche Zeile ist
             # das Gate, welche Beiwerk? Lieber hier laut scheitern als der
             # Doku eine Zusicherung geben, die niemand geprüft hat.
@@ -249,35 +257,27 @@ def run_commands(region: Region) -> list[tuple[str, str | None]]:
                 break
             block.append(candidate)
             index += 1
-        commands.extend((line, None) for line in join_continuations(block))
-    return commands
-
-
-def invokes_pytest(command: str) -> bool:
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return False
-    return any(token == "pytest" or token.endswith("/pytest") for token in tokens)
+        steps.append([split_tag(line.strip()) for line in join_continuations(block)])
+    return steps
 
 
 def workflow_commands(region: Region) -> tuple[list[str], list[str]]:
-    """(gewählte Befehle, übersprungene Befehle) für eine Region."""
+    """(markierte Befehle, übersprungene Schritte) für eine Region."""
     found: list[str] = []
     skipped: list[str] = []
-    for command, tag in run_commands(region):
-        text = command.strip()
-        if not text or text.startswith("#"):
-            continue
-        chosen = tag == GATE_TAG if region.marked else invokes_pytest(text)
-        (found if chosen else skipped).append(text)
+    for step in run_steps(region):
+        usable = [(c.strip(), t) for c, t in step if c.strip() and not c.strip().startswith("#")]
+        marked = [command for command, tag in usable if tag == GATE_TAG]
+        if marked:
+            found.extend(marked)
+        elif usable:
+            # Der Schritt, nicht jede Zeile darin: Gemeldet wird die erste
+            # Befehlszeile, damit man ihn wiederfindet.
+            skipped.append(usable[0][0])
     if not found:
-        hint = (
-            f"Trägt kein Schritt die Marke `# {GATE_TAG}`?" if region.marked else "Parser kaputt?"
-        )
         sys.exit(
-            f"FEHLER: In Job {region.job!r} ({region.path.relative_to(ROOT)}) steht kein "
-            f"einziger Befehl für die Region {region.name!r}. {hint}"
+            f"FEHLER: In Job {region.job!r} ({region.path.relative_to(ROOT)}) trägt kein "
+            f"Schritt die Marke `# {GATE_TAG}` — die Region {region.name!r} wäre leer."
         )
     return found, skipped
 
@@ -336,12 +336,7 @@ def main() -> int:
         )
         if found:
             summary[-1] += "  <- Abweichung"
-        # Nur für die markierte Region: Dort kann ein übersprungener Schritt
-        # ein vergessenes Gate sein. In der Live-Region ist das Übersprungene
-        # per Konstruktion Beiwerk (`set +e`, `echo`, die Einordnung) — jede
-        # Zeile davon zu melden, verdeckt den einen Fall, der zählt.
-        if region.marked:
-            skipped_report.extend(skipped)
+        skipped_report.extend(f"[{region.name}] {command}" for command in skipped)
 
     if problems:
         print("DRIFT: Die dokumentierten Befehle weichen von den Workflows ab.", file=sys.stderr)

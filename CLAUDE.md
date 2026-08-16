@@ -73,5 +73,6 @@ PYTHONPATH=src pytest tests/ -v -m live
 <!-- live:end -->
 
 Beide Blöcke sind erzwungen: `check_gate_docs.py` hält sie gegen `ci.yml` und
-`live.yml`. Ein Gate trägt dort die Marke `# gate` am `run:` und macht die
-Doku rot, bis es hier steht. Das Übrige steht in README und CONTRIBUTING.
+`live.yml`. Markiert wird mit `# gate` an der Befehlszeile dort; was markiert
+ist, macht die Doku rot, bis es hier steht. Das Übrige steht in README und
+CONTRIBUTING.

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.035" timestamp="2026-08-16T08:58:47.613202+00:00" hostname="vm"><testcase classname="t.test_fehler" name="test_a" time="0.001"><error message="failed on setup with &quot;RuntimeError: Setup gescheitert&quot;">@pytest.fixture
+    def kaputt():
+&gt;       raise RuntimeError("Setup gescheitert")
+E       RuntimeError: Setup gescheitert
+
+t/test_fehler.py:4: RuntimeError</error></testcase></testsuite></testsuites>

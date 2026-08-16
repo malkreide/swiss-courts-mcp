@@ -28,8 +28,11 @@ from typing import Any
 WURZEL = Path(__file__).resolve().parent.parent
 FIXTURES = WURZEL / "tests" / "fixtures"
 
-# Dateien im Ordner, die keine aufgezeichnete Antwort sind.
-_KEINE_AUFZEICHNUNG = {"PROVENANCE.md", "scd_sample.csv"}
+# Dateien im Ordner, die keine aufgezeichnete *HTTP*-Antwort sind. `junit/`
+# enthaelt aufgezeichnete pytest-Reports fuer `classify_live_run.py` — auch
+# Aufzeichnungen, aber ohne Elasticsearch-Schluessel; ihr Nachweis wird in
+# `tests/test_classify_live_run.py` geprueft.
+_KEINE_AUFZEICHNUNG = {"PROVENANCE.md", "scd_sample.csv", "junit"}
 
 
 @lru_cache(maxsize=1)

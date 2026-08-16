@@ -108,3 +108,63 @@ Fallback und keine Aufzeichnung.
 - **Auswahl:** ungekuerzt — der Server rechnet *in* dieser Antwort, ein Schnitt erfaende ein anderes Ergebnis
 - **Groesse:** 584 Bytes
 - **SHA-256:** `83329d2c20b6515353c2adb3e36e835e96a00b9e90ccdfc9c0450d6aa6b50eb9`
+
+---
+
+# `junit/` — aufgezeichnete pytest-Reports
+
+Aufgezeichnet am **2026-08-16** mit **pytest 9.1.1**, dieselbe Version, die
+`pip install -e ".[dev]"` liefert und die die CI fährt.
+
+Diese Dateien belegen nicht eine Antwort von entscheidsuche.ch, sondern das
+Ausgabeformat von pytest selbst — der Erzeuger, dessen Vertrag
+`scripts/classify_live_run.py` liest. Sie stehen deshalb in einem eigenen
+Ordner und ausserhalb des Schlüsselverzeichnisses; geprüft wird ihr Nachweis
+in `tests/test_classify_live_run.py`.
+
+**Warum überhaupt:** Die übrigen Tests der Einordnung schreiben ihr XML von
+Hand. Handgeschriebene Fixtures kodieren die Annahme des Autors und können
+sie nicht widerlegen — hiesse ein Zähler `error` statt `errors`, oder fehlte
+die `<testsuites>`-Hülle, blieben alle grün und die Produktion läge falsch.
+Aufgezeichnet ist deshalb je eine Form, die die Einordnung unterscheidet.
+
+**Erzeugt** mit je einer Wegwerf-Testdatei und
+`pytest <datei> --junitxml=<ziel>`; `null_tests.xml` zusätzlich mit
+`-m "not live"` auf einen ausschliesslich mit `live` markierten Test, weil
+genau so ein leerer Lauf entsteht.
+
+Beobachtet und damit belegt: die Hülle `<testsuites name="pytest tests">`, die
+Zähler `tests` / `failures` / `errors` / `skipped` als Attribute am
+`<testsuite>`, und dass ein Setup-Fehler in `errors` landet, nicht in
+`failures`.
+
+## `junit/gruen.xml`
+
+- **Lauf:** zwei bestandene Tests
+- **Zähler:** tests=2, failures=0, errors=0, skipped=0 → `clear`
+- **SHA-256:** `6a3006ef5a9206cf7085a781f2a26b97b9a0e105964046010f2c6425918e4f91`
+
+## `junit/fehlschlag.xml`
+
+- **Lauf:** ein bestandener, ein gefallener Test (`assert 1 == 2`)
+- **Zähler:** tests=2, failures=1, errors=0, skipped=0 → `finding`
+- **SHA-256:** `ce2c38408bef13426210f060151c4ff8861337b34260ae40060f05a3e85fde31`
+
+## `junit/fehler.xml`
+
+- **Lauf:** ein Test, dessen Fixture beim Setup wirft
+- **Zähler:** tests=1, failures=0, errors=1, skipped=0 → `finding`
+- **SHA-256:** `7001963b8479f5bbb03187e284518e974c6f19c8e624a194ace85a8ca2c95fe6`
+
+## `junit/alle_uebersprungen.xml`
+
+- **Lauf:** zwei Tests, beide per `skipif` übersprungen — die Form, die
+  pytest bei einem fehlenden Secret erzeugt und mit Exit 0 quittiert
+- **Zähler:** tests=2, failures=0, errors=0, skipped=2 → `unknown`
+- **SHA-256:** `a307421002f5ce58da7aad92407c39f200371a885f41465d5a8ab1dd7782e798`
+
+## `junit/null_tests.xml`
+
+- **Lauf:** nichts eingesammelt (Marken-Filter greift auf alles)
+- **Zähler:** tests=0 → `unknown`
+- **SHA-256:** `834a748a49f5f0be090deb421081c7f8b83fddaa04f4ffd67525ff4f0e4adf4f`

@@ -66,6 +66,10 @@ Please include:
 - Pydantic models for all tool inputs with `extra="forbid"`
 - German for user-facing strings (error messages, tool descriptions); English for code identifiers
 - Tests required for new tools; follow the existing FastMCP / Pydantic v2 patterns in `server.py`
+- The 8 tools live in `server.py`, not a `tools/` package — a deliberate deviation from
+  "split when > 5 tools". At this count one module stays readable and `register_tools` keeps
+  registration declarative; revisit if the count grows. The offline fallback is isolated in
+  `fallback.py`, separate from the live client.
 
 ---
 

@@ -242,46 +242,12 @@ alongside tools).
 └──────────────────────────┘   └───────────────────────────────────────┘
 ```
 
-### Architecture decision
-
-This server uses **Architecture C (metadata-only offline fallback), delivered
-via lazy download (Option A mechanics)** — decided after a live probe on
-2026-07-19:
-
-- **Live-first, always.** entscheidsuche.ch remains the sole source on success;
-  its behaviour is unchanged. The fallback only engages on an availability
-  failure (bot-block, HTTP 5xx/429, timeout, connect error) or when forced.
-- **Source: the SCD dump** (Zenodo `10.5281/zenodo.14867950`, Version 2024-3,
-  **CC BY 4.0**), the ~120 MB CSV — metadata/regesten only, **no full text**. The
-  375 MB full-text Parquet and its heavy `pyarrow` dependency were rejected: a
-  partial fallback does not justify the footprint, and full text would fake an
-  equivalence that does not exist (BGer only).
-- **A second candidate was rejected:** Zenodo `5529712`
-  ("SwissJudgmentPrediction") is CC BY-**NC-SA** 4.0 — incompatible with this
-  MIT project.
-- **Consequences:** the CSV is cached on disk (`platformdirs`) and searched via
-  SQLite; update detection uses the Zenodo versions API (`conceptrecid`
-  7793043). Every response declares `source` (`live`/`dump`) and dump responses
-  add a `coverage_note`. CC-BY attribution ships **in the tool output**, not
-  only here.
-
-### Offline fallback
-
-The fallback is a **behaviour of the existing tools**, not a separate search
-tool (only `get_fallback_status` was added, for transparency). It is
-**partial, not equivalent** to the live source:
-
-- Only the **Federal Supreme Court** (BGer/BGE), **2007–2024**, **no full text**.
-- **Bundesverwaltungsgericht, Bundesstrafgericht and all 26 cantons are NOT
-  covered.** A cantonal or non-BGer query in dump mode returns an explicit
-  "not covered" answer — never a silent empty result.
-- `get_court_decision` is best-effort in dump mode: SCD case ids (`docref`, e.g.
-  `1C_517/2016`) differ from entscheidsuche signatures, so some lookups are
-  honestly reported as non-resolvable.
-- If neither live nor dump is available, tools return a clear, actionable error
-  (no crash, no stack trace).
-
-Inspect the cache and coverage at any time with `get_fallback_status`.
+Live-first, always: the offline dump only engages on an availability failure
+(bot-block, HTTP 5xx/429, timeout) or when forced. It is a behaviour of the
+existing tools, not a separate search tool — why this source and not the
+full-text one is in [ADR 0002](docs/adr/0002-offline-fallback.md); what it does
+and does not cover is under [Known Limitations](#known-limitations). Inspect
+the cache at any time with `get_fallback_status`.
 
 ---
 
@@ -300,41 +266,6 @@ Inspect the cache and coverage at any time with `get_fallback_status`.
 | **Secrets** | No secrets in code/logs; `.env` git-ignored, Gitleaks on PRs; see [secret management](docs/secret-management.md) |
 | **Licenses** | Court decisions are public domain under Swiss law ([BGG Art. 27](https://www.fedlex.admin.ch/eli/cc/2006/218/de#art_27)) |
 | **Terms of Service** | Subject to [entscheidsuche.ch](https://entscheidsuche.ch) usage terms — please be kind to the server |
-
----
-
-## Project Structure
-
-```
-swiss-courts-mcp/
-├── src/
-│   └── swiss_courts_mcp/
-│       ├── __init__.py
-│       ├── __main__.py
-│       ├── server.py            # MCP server, 8 tools + 1 prompt, lifespan, auth wiring
-│       ├── api_client.py        # HTTP client, ES query builder, egress allow-list
-│       ├── fallback.py          # offline dump layer (Zenodo → cache → SQLite)
-│       ├── auth.py              # JWT bearer-token verifier (HTTP transport)
-│       ├── config.py            # Settings object (env-driven)
-│       ├── logging_config.py    # structured logging on stderr
-│       └── models.py            # structured response envelope (provenance: live|dump)
-├── tests/                       # unit (respx-mocked) + live + security tests
-├── docs/                        # egress, secret-management, ADRs
-├── .github/workflows/           # ci · security (gitleaks) · live · publish
-├── Dockerfile                   # hardened container (non-root, 0.0.0.0 only here)
-├── ROADMAP.md
-├── pyproject.toml · CHANGELOG.md · LICENSE
-├── CONTRIBUTING.md · CONTRIBUTING.de.md
-├── SECURITY.md · SECURITY.de.md
-└── README.md · README.de.md
-```
-
-> **Note (single-file tools):** the 8 tools live in `server.py` rather than a
-> `tools/` package. At this count a single module stays readable; the registry
-> (`register_tools`) keeps registration declarative. This is a deliberate
-> deviation from the "split when > 5 tools" convention and will be revisited if
-> the tool count grows. The offline-fallback logic is isolated in `fallback.py`,
-> cleanly separated from the live client.
 
 ---
 
@@ -358,21 +289,20 @@ net for availability, **not an equivalent mirror** of the live source:
   version and can check Zenodo for a newer one.
 - **Law-reference search** offline only matches references named in the decision's
   subject/regest (`topic`/`issue`) — there is no offline cited-law index.
+- **`get_court_decision` is best-effort offline:** SCD case ids (`docref`, e.g.
+  `1C_517/2016`) differ from entscheidsuche signatures, so some lookups are
+  honestly reported as non-resolvable.
 - Responses always disclose their origin via `source` (`live`/`dump`) and a
-  `coverage_note`; the server never silently narrows coverage.
+  `coverage_note`; the server never silently narrows coverage — an uncovered
+  query gets an explicit "not covered" answer, never a silent empty result.
 
 ---
 
 ## Testing
 
-Unit tests mock all HTTP with `respx`; live tests hit the real API and run in a
-separate nightly workflow ([`live.yml`](.github/workflows/live.yml)), never
-blocking PRs.
-
-Run from the project root with `PYTHONPATH=src`:
-
-The five gates CI runs — `check_gate_docs.py` holds this list against
-`ci.yml`, so it cannot quietly fall behind:
+Unit tests mock all HTTP with `respx`. Run from the project root. The five
+gates CI runs — `check_gate_docs.py` holds this list against `ci.yml`, so it
+cannot quietly fall behind:
 
 <!-- gates:start -->
 ```bash
@@ -384,8 +314,8 @@ python scripts/check_gate_docs.py
 ```
 <!-- gates:end -->
 
-The live tests are not a gate — they hit the real source and run on a
-schedule (`live.yml`), not on pull requests:
+The live tests are not a gate — they hit the real source and run on a schedule
+([`live.yml`](.github/workflows/live.yml)), not on pull requests:
 
 <!-- live:start -->
 ```bash
@@ -394,12 +324,11 @@ PYTHONPATH=src pytest tests/ -v -m live
 <!-- live:end -->
 
 Editing `live.yml` is a special case: GitHub only honours `schedule` on the
-default branch, so changes take effect after the merge — trigger the workflow
-by hand (`workflow_dispatch`) to test them before that.
+default branch, so changes take effect after the merge — trigger it by hand
+(`workflow_dispatch`) to test them before that.
 
-The offline-fallback tests use a small committed schema fixture
-(`tests/fixtures/scd_sample.csv`) and mock the Zenodo download with `respx` —
-the full ~120 MB dump is never committed or downloaded in CI.
+The offline-fallback tests mock the Zenodo download with `respx` and use a
+small committed fixture — the ~120 MB dump is never downloaded in CI.
 
 ---
 

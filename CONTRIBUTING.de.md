@@ -66,6 +66,10 @@ Bitte geben Sie an:
 - Pydantic-Modelle für alle Tool-Inputs mit `extra="forbid"`
 - Deutschsprachige User-Strings (Fehlermeldungen, Tool-Beschreibungen); englische Code-Identifier
 - Tests für neue Tools erforderlich; den bestehenden FastMCP-/Pydantic-v2-Mustern in `server.py` folgen
+- Die 8 Tools liegen in `server.py`, nicht in einem `tools/`-Paket — eine bewusste Abweichung
+  von «aufteilen ab 5 Tools». Bei dieser Zahl bleibt ein Modul lesbar, und `register_tools` hält
+  die Registrierung deklarativ; bei mehr Tools neu bewerten. Der Offline-Fallback liegt isoliert
+  in `fallback.py`, getrennt vom Live-Client.
 
 ---
 

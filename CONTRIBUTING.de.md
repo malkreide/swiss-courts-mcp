@@ -40,9 +40,11 @@ Bitte geben Sie an:
    hält `pyproject.toml` gegen `server.json` und die README-Badges und
    scheitert an einer in `src/` hartkodierten Version. Der Gate-Doku-Check
    hält die Liste oben gegen `ci.yml` — ein neues Gate in der CI ohne
-   Eintrag in der Doku macht den Build rot. Als Gate zählt ein Schritt, dessen
-   `run:`-Zeile die Marke `# gate` trägt (YAML wirft sie weg, GitHub sieht sie
-   nie) — wer dort markiert, muss den Befehl auch in der Doku nennen.
+   Eintrag in der Doku macht den Build rot. Als Gate zählt ein Befehl, dessen
+   Zeile die Marke `# gate` trägt — in `ci.yml` ein YAML-Kommentar, im
+   Skript-Block von `live.yml` ein Shell-Kommentar; beides erreicht das
+   Ausgeführte nicht. Wer dort markiert, muss den Befehl auch in der Doku
+   nennen.
 6. Optional — die Live-Suite gegen die echte Quelle fahren:
    <!-- live:start -->
    ```bash

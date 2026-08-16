@@ -40,8 +40,9 @@ Please include:
    it holds `pyproject.toml` against `server.json` and the README badges,
    and fails on a version hardcoded in `src/`. The gate-doc check holds the
    list above against `ci.yml`, so adding a gate to CI without documenting
-   it turns the build red. A step counts as a gate when its `run:` line carries
-   the `# gate` marker (YAML strips it; GitHub never sees it) — mark a new
+   it turns the build red. A command counts as a gate when its line carries the
+   `# gate` marker — a YAML comment in `ci.yml`, a shell comment inside
+   `live.yml`'s script block; neither reaches what actually runs. Mark a new
    gate there and the docs are required to name it.
 6. Optional — run the live suite against the real source:
    <!-- live:start -->

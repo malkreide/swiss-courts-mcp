@@ -49,7 +49,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          PYTHONPATH=src pytest tests/ -m live -v --junitxml=live-report.xml 2>&1 | tee live-output.txt
+          PYTHONPATH=src pytest tests/ -m live -v --junitxml=live-report.xml 2>&1 | tee live-output.txt  # gate
           echo "pytest_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       # `if: failure()` kennt rot und nicht rot. Ein Live-Lauf hat drei

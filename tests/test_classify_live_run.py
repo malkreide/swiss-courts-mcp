@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import classify_live_run as clr  # noqa: E402
 
+JUNIT = Path(__file__).resolve().parent / "fixtures" / "junit"
+
 
 def write(tmp: Path, xml: str) -> Path:
     path = tmp / "live-report.xml"
@@ -114,6 +116,67 @@ class MissingReportTest(unittest.TestCase):
             path = write(Path(tmp), "<irgendwas/>")
             state, _ = clr.classify(path)
         self.assertEqual(state, clr.UNKNOWN)
+
+
+class AufgezeichneteReportsTest(unittest.TestCase):
+    """Dieselbe Einordnung, aber gegen echte pytest-Ausgabe statt gegen Handarbeit.
+
+    Alles oberhalb schreibt sein XML selbst — und belegt damit nur, dass die
+    Einordnung mit der Annahme ihres Autors uebereinstimmt. Hiesse ein Zaehler
+    `error` statt `errors`, fehlte die `<testsuites>`-Huelle oder stuenden die
+    Zahlen an einer anderen Stelle, bliebe oben alles gruen, waehrend der
+    geplante Lauf in der CI danebengreift.
+
+    Die Dateien in `tests/fixtures/junit/` sind am 16.08.2026 mit pytest 9.1.1
+    aufgezeichnet — je eine Form, die die Einordnung unterscheidet. Herkunft
+    und SHA-256 stehen in `tests/fixtures/PROVENANCE.md`.
+    """
+
+    def _classify(self, name: str) -> tuple[str, str]:
+        return clr.classify(JUNIT / name)
+
+    def test_gruener_lauf_ist_clear(self):
+        state, reason = self._classify("gruen.xml")
+        self.assertEqual(state, clr.CLEAR)
+        self.assertIn("2 von 2", reason)
+
+    def test_fehlschlag_ist_ein_finding(self):
+        state, _ = self._classify("fehlschlag.xml")
+        self.assertEqual(state, clr.FINDING)
+
+    def test_setup_fehler_ist_ein_finding(self):
+        """pytest bucht einen Fixture-Fehler unter `errors`, nicht `failures`."""
+        state, _ = self._classify("fehler.xml")
+        self.assertEqual(state, clr.FINDING)
+
+    def test_alle_uebersprungen_ist_unknown(self):
+        """Der Fall, der mit Exit 0 endet und trotzdem nichts geprueft hat."""
+        state, reason = self._classify("alle_uebersprungen.xml")
+        self.assertEqual(state, clr.UNKNOWN)
+        self.assertIn("uebersprungen", reason)
+
+    def test_null_tests_ist_unknown(self):
+        state, reason = self._classify("null_tests.xml")
+        self.assertEqual(state, clr.UNKNOWN)
+        self.assertIn("null Tests", reason)
+
+    def test_jede_aufzeichnung_steht_in_der_provenance(self):
+        """Sonst waechst der Ordner und der Nachweis bleibt zurueck."""
+        text = (JUNIT.parent / "PROVENANCE.md").read_text(encoding="utf-8")
+        fehlend = [p.name for p in sorted(JUNIT.iterdir()) if f"## `junit/{p.name}`" not in text]
+        self.assertEqual(fehlend, [], f"ohne Eintrag in PROVENANCE.md: {fehlend}")
+
+    def test_jede_aufzeichnung_wird_von_einem_test_gefahren(self):
+        """Die Gegenrichtung — eine Datei, die niemand liest, belegt nichts."""
+        gefahren = {
+            "gruen.xml",
+            "fehlschlag.xml",
+            "fehler.xml",
+            "alle_uebersprungen.xml",
+            "null_tests.xml",
+        }
+        vorhanden = {p.name for p in JUNIT.iterdir()}
+        self.assertEqual(vorhanden, gefahren)
 
 
 class GithubOutputTest(unittest.TestCase):

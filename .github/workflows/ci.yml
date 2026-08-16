@@ -25,7 +25,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests
-        run: PYTHONPATH=src pytest tests/ -m "not live"
+        run: PYTHONPATH=src pytest tests/ -m "not live"  # gate
 
       # ruff kommt aus der `dev`-Extra und ist dort hart gepinnt. Kein
       # zweiter `pip install ruff==…` an dieser Stelle: der waere ein zweiter
@@ -33,15 +33,15 @@ jobs:
       # lief es vorher auseinander — die CI war gepinnt, der lokale
       # Dev-Install nicht.
       - name: Lint
-        run: ruff check src/ tests/ scripts/
+        run: ruff check src/ tests/ scripts/  # gate
 
       - name: Format check
-        run: ruff format --check src/ tests/ scripts/
+        run: ruff format --check src/ tests/ scripts/  # gate
 
       - name: Versions-Sync (pyproject ↔ server.json / README / src)
-        run: python scripts/check_version_sync.py
+        run: python scripts/check_version_sync.py  # gate
 
       # Haelt die Gate-Liste in der Doku gegen die Schritte dieses Jobs. Ohne
       # das laeuft die Doku wieder auseinander — zweimal passiert.
       - name: Gate-Doku (CLAUDE.md / README / CONTRIBUTING ↔ ci.yml)
-        run: python scripts/check_gate_docs.py
+        run: python scripts/check_gate_docs.py  # gate

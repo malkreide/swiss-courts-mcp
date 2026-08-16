@@ -77,6 +77,15 @@ python scripts/check_gate_docs.py
 ```
 <!-- gates:end -->
 
+**Ein sechstes Gate hängt an jedem PR, ausserhalb von `ci.yml`:**
+`security.yml`. Es steht bewusst nicht im Block oben — der wird von
+`check_gate_docs.py` gegen den Job `test` in `ci.yml` gehalten, und ein
+fremder Eintrag dort machte diesen Gate rot. Lokal lässt es sich nicht
+nebenbei nachfahren; ein roter PR bei grünen Tests ist meistens es.
+
+Alle Gates des Blocks laufen auf allen drei Matrix-Feldern, keine
+`if:`-Ausnahme; ein `fail-fast: false` steht nicht da.
+
 Live-Tests laufen geplant (`live.yml`, `cron: "0 4 * * *"`) — DRIFT-005
 erfüllt, nicht bloss per `-m "not live"` ausgeschlossen. Kein Gate, von Hand:
 

@@ -307,6 +307,7 @@ cannot quietly fall behind:
 <!-- gates:start -->
 ```bash
 PYTHONPATH=src pytest tests/ -m "not live"
+python scripts/check_ruff_pin.py
 ruff check src/ tests/ scripts/
 ruff format --check src/ tests/ scripts/
 python scripts/check_version_sync.py

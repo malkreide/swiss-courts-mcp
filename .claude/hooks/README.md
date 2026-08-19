@@ -35,6 +35,11 @@ gebraucht wird — der Hook macht daraus den Normalfall.
    SSH auf `BatchMode=yes`); ein Credential-Prompt ohne Terminal wartet sonst
    unbegrenzt.
 3. **Er schweigt bei 0.** Ausgabe gibt es nur, wenn wirklich Commits fehlen.
+   Ebenso bei **detached HEAD**: der Abstand wäre dort messbar, aber ein
+   losgelöster Stand ist meist Absicht (bisect, Tag angesehen, einzelner
+   Commit ausgecheckt) und nicht der Fall, den dieser Hook meint — ein Branch,
+   auf dem gearbeitet wird und der zurückfällt. Der Ausstieg steht vor den
+   Netzaufrufen; dort kostet er nicht einmal eine Verbindung.
 4. **Er rät den Default-Branch nicht.** Autoritativ per `git ls-remote
    --symref origin HEAD`. Ist er nicht ermittelbar, schweigt der Hook, statt
    `main` anzunehmen. Dieses Repo nutzt `master`; die Annahme «main» hat schon
@@ -106,6 +111,7 @@ zugehörige Test musste fallen:
 | `exit 0`-Schutz entfernt | Verzeichnis ohne Git-Repo | `exit 1` statt stumm |
 | Deckel auf dem Netzaufruf entfernt | Remote nimmt an und schweigt | hängt unbegrenzt (extern bei 20s abgewürgt; mit Deckel: 6s) |
 | `fetch` bei fehlenden Objekten übersprungen | Klon, danach 3 neue Commits im Remote | **stumm** trotz echtem Rückstand |
+| Detached-HEAD-Ausstieg entfernt | detached HEAD, 3 hinter | meldet, statt zu schweigen |
 
 Kontrollprobe zur ersten Zeile: dieselbe `main`-Mutation meldet im `main`-Repo
 weiterhin korrekt. Sie ist also nicht generell kaputt, sondern genau dort

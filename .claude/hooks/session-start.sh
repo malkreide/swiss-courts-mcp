@@ -70,6 +70,13 @@ git rev-parse --git-dir            >/dev/null 2>&1 || exit 0
 git remote get-url origin          >/dev/null 2>&1 || exit 0
 git rev-parse --verify --quiet HEAD >/dev/null 2>&1 || exit 0
 
+# Detached HEAD schweigt. Der Abstand wäre dort zwar messbar, aber ein
+# losgelöster Stand ist meist Absicht (bisect, Tag angesehen, einzelner
+# Commit ausgecheckt) und nicht der Fall, den dieser Hook meint: ein
+# Branch, auf dem gearbeitet wird und der zurückfällt. Der Ausstieg steht
+# bewusst VOR den Netzaufrufen — deren Ergebnis würde ohnehin verworfen.
+git symbolic-ref --quiet HEAD >/dev/null 2>&1 || exit 0
+
 # Default-Branch und Remote-Stand ermitteln — beides aus EINEM Aufruf.
 #
 # Der Default-Branch wird gefragt, nicht geraten. Die naheliegende Abkürzung,
@@ -125,12 +132,8 @@ case "$behind" in
   0)             exit 0 ;;
 esac
 
-# Detached HEAD ist kein Fehlerfall: der Abstand ist dort genauso messbar und
-# genauso relevant, nur hat der Stand keinen Branch-Namen.
+# Ein Branch ist hier garantiert: detached HEAD ist oben ausgestiegen.
 current=$(git symbolic-ref --quiet --short HEAD 2>/dev/null)
-if [ -z "$current" ]; then
-  current="detached HEAD ($(git rev-parse --short HEAD 2>/dev/null))"
-fi
 
 commit_word="Commits"
 [ "$behind" = "1" ] && commit_word="Commit"

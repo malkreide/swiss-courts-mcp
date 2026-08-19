@@ -102,7 +102,7 @@ fi
 [ -n "$default_branch" ] || exit 0
 
 # Die Spitze schon lokal? Dann ist gar kein fetch nötig — das ist der
-# Normalfall (frischer Klon) und macht die Pruefung zu einem einzigen
+# Normalfall (frischer Klon) und macht die Prüfung zu einem einzigen
 # Netzaufruf. Nur wenn die Objekte fehlen, wird wirklich geholt.
 if [ -z "$remote_head" ] ||
    ! git rev-parse --verify --quiet "${remote_head}^{commit}" >/dev/null 2>&1; then

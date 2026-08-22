@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Behoben
+
+- **Browser-Clients scheiterten am Preflight.** Spec `2026-07-28` routet eine
+  Streamable-HTTP-Anfrage über `Mcp-Method`, `Mcp-Name` und
+  `Mcp-Protocol-Version`; die CORS-Freigabeliste nannte keinen davon, dafür mit
+  `Mcp-Session-Id` den Header genau der Session-Mechanik, die dieselbe Revision
+  abgeschafft hat. Ein Browser darf einen nicht safelisteten Header nicht
+  senden, wenn der Server ihn nicht nennt: die Anfrage starb vor dem ersten
+  MCP-Byte, während stdio und Python weiterliefen. Deshalb war nichts rot.
+
+### Hinzugefügt
+
+- **`build_http_app(settings)`**, herausgezogen aus `_run_http`, damit die
+  CORS-Schicht prüfbar ist. Auth-Konfiguration, `transport_security` und
+  `stateless_http` wandern unverändert mit; `_run_http` behält die
+  Bind-Warnungen und ruft die neue Funktion auf.
+
+- **Frischehinweise auf `tools/list`, `prompts/list` und `server/discover`**
+  (SEP-2549, Spec `2026-07-28`): `ttlMs` 300000, `cacheScope` `public`. Das SDK
+  setzt sonst «sofort veraltet, nie geteilt». `prompts/get` bleibt ohne Hinweis:
+  das wäre eine Zusicherung über den Inhalt statt über das Verzeichnis.
+  `resources/list` fehlt, weil dieser Server keine Ressourcen registriert.
+
+
 Noch nichts seit 0.4.0.
 
 ## [0.4.0] - 2026-08-16

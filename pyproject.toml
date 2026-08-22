@@ -68,7 +68,7 @@ dev = [
     # lokal und in der CI dieselbe Version laeuft. Zwei Pins, die
     # uebereinstimmen muessen, sind eine Drift-Quelle und keine Absicherung.
     # Updates via Dependabot.
-    "ruff==0.16.1",
+    "ruff==0.16.3",
     "pyjwt[crypto]>=2.13.0",
 ]
 

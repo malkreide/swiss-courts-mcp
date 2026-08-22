@@ -141,7 +141,7 @@ wie der Code: Nichts ist rot, weil nichts geprüft wird, worauf es ankommt.
 Default-Branch ist `master`, nicht `main` — der Frische-Check oben lautet hier
 `git fetch origin master && git rev-list --count HEAD..origin/master`.
 
-ruff ist auf `0.16.1` gepinnt, an genau einer Stelle (`dev`-Extra in
+ruff ist auf `0.16.3` gepinnt, an genau einer Stelle (`dev`-Extra in
 `pyproject.toml`); `pip install -e ".[dev]"` liefert damit die CI-Version.
 
 Vor dem Lauf `ruff --version` prüfen: ein älteres ruff früher im `PATH`

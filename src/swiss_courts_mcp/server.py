@@ -24,6 +24,7 @@ from contextlib import asynccontextmanager
 from enum import StrEnum
 
 import httpx
+from mcp.server.caching import CacheableMethod, CacheHint
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
@@ -1254,6 +1255,32 @@ def _build_auth(settings: Settings):
     return auth_settings, JWTTokenVerifier(settings)
 
 
+# SEP-2549, Spec 2026-07-28: die auflistenden Methoden tragen `ttlMs` und
+# `cacheScope`. Das SDK setzt beides auf «sofort veraltet, nie geteilt» — ein
+# Server ohne `cache_hints` verhaelt sich also nicht neutral, sondern laesst
+# jeden Client bei jeder Verbindung neu auflisten, fuer Verzeichnisse, die
+# `register_tools`/`register_prompts` beim Bau festlegen.
+#
+# `public` folgt aus der Sache: die Registrierung haengt nicht vom Aufrufer ab.
+# Sie haengt allerdings am `http`-Flag von `create_mcp` — was dort variiert,
+# ist die Auth-Konfiguration, nicht die Tool- oder Prompt-Liste. Sobald das
+# einmal nicht mehr stimmt, muss der Scope im selben Commit auf `private`.
+#
+# `prompts/get` steht bewusst nicht dabei: das waere eine Zusicherung ueber den
+# INHALT statt ueber das Verzeichnis. Ressourcen registriert dieser Server
+# keine.
+LIST_CACHE_TTL_MS = 300_000
+
+# Annotiert, nicht inferiert: `MCPServer` nimmt
+# `Mapping[CacheableMethod, CacheHint]`, und ein Dict-Literal ohne Annotation
+# inferiert mypy als `str`.
+CACHE_HINTS: dict[CacheableMethod, CacheHint] = {
+    "tools/list": CacheHint(ttl_ms=LIST_CACHE_TTL_MS, scope="public"),
+    "prompts/list": CacheHint(ttl_ms=LIST_CACHE_TTL_MS, scope="public"),
+    "server/discover": CacheHint(ttl_ms=LIST_CACHE_TTL_MS, scope="public"),
+}
+
+
 def create_mcp(settings: Settings, *, http: bool = False) -> MCPServer:
     """Baut eine MCPServer-Instanz. Auth wird nur im HTTP-Modus verdrahtet."""
     kwargs: dict = dict(
@@ -1274,7 +1301,7 @@ def create_mcp(settings: Settings, *, http: bool = False) -> MCPServer:
             kwargs["auth"] = auth_settings
             kwargs["token_verifier"] = verifier
 
-    mcp = MCPServer("swiss_courts_mcp", **kwargs)
+    mcp = MCPServer("swiss_courts_mcp", cache_hints=CACHE_HINTS, **kwargs)
     register_tools(mcp)
     register_prompts(mcp)
     return mcp
@@ -1327,21 +1354,24 @@ def build_transport_security(settings: Settings):
     )
 
 
-def _run_http(settings: Settings) -> None:
-    """Startet den HTTP-Transport mit Auth (SEC-009) und CORS (SDK-004)."""
-    import uvicorn
-    from starlette.middleware.cors import CORSMiddleware
+# Die Header, nach denen Spec 2026-07-28 eine Streamable-HTTP-Anfrage routet —
+# in der Schreibweise des SDK (`mcp.shared.inbound`). Ein Browser darf einen
+# nicht safelisteten Header gar nicht erst senden, wenn der Server ihn nicht in
+# `Access-Control-Allow-Headers` nennt: ohne sie stirbt jede Cross-Origin-
+# Anfrage am Preflight, vor dem ersten MCP-Byte. stdio- und Python-Clients
+# kennen keinen Preflight und merken davon nichts — deshalb fiel es nicht auf.
+CORS_ROUTING_HEADERS = ["Mcp-Method", "Mcp-Name", "Mcp-Protocol-Version"]
 
-    if settings.host == "0.0.0.0" and not settings.allow_public_bind:  # noqa: S104
-        log.warning(
-            "public_bind_without_optin",
-            hint="0.0.0.0 nur in Containern/Trusted-Net; setze MCP_ALLOW_PUBLIC_BIND=1",
-        )
-    if not settings.auth_enabled:
-        log.warning(
-            "http_without_auth",
-            hint="HTTP-Modus ohne Auth — nur hinter authentifizierendem Proxy betreiben",
-        )
+
+def build_http_app(settings: Settings):
+    """Baut die Streamable-HTTP-App samt Auth und CORS, ohne Socket.
+
+    Herausgezogen aus `_run_http`, damit die CORS-Schicht pruefbar ist: solange
+    Aufbau und `uvicorn.run` in derselben Funktion standen, liess sich die
+    Freigabeliste nur lesen, nicht ausprobieren — und eine gelesene Liste kann
+    vollstaendig aussehen und trotzdem nie an der Middleware ankommen.
+    """
+    from starlette.middleware.cors import CORSMiddleware
 
     server = create_mcp(settings, http=True)
     security = build_transport_security(settings)
@@ -1368,10 +1398,33 @@ def _run_http(settings: Settings) -> None:
             allow_origins=settings.cors_origins,
             allow_credentials=settings.auth_enabled,
             allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["Mcp-Session-Id", "Authorization", "Content-Type"],
+            allow_headers=[
+                "Mcp-Session-Id",
+                "Authorization",
+                "Content-Type",
+                *CORS_ROUTING_HEADERS,
+            ],
             expose_headers=["Mcp-Session-Id"],
         )
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    return app
+
+
+def _run_http(settings: Settings) -> None:
+    """Startet den HTTP-Transport mit Auth (SEC-009) und CORS (SDK-004)."""
+    import uvicorn
+
+    if settings.host == "0.0.0.0" and not settings.allow_public_bind:  # noqa: S104
+        log.warning(
+            "public_bind_without_optin",
+            hint="0.0.0.0 nur in Containern/Trusted-Net; setze MCP_ALLOW_PUBLIC_BIND=1",
+        )
+    if not settings.auth_enabled:
+        log.warning(
+            "http_without_auth",
+            hint="HTTP-Modus ohne Auth — nur hinter authentifizierendem Proxy betreiben",
+        )
+
+    uvicorn.run(build_http_app(settings), host=settings.host, port=settings.port)
 
 
 def main():

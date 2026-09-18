@@ -39,9 +39,12 @@ dependencies = [
     # scheitert. Der `<3`-Deckel bleibt: ein Major-Sprung ist eine bewusste
     # Entscheidung. Updates via Dependabot.
     # Der Pin bestimmt weiterhin die Protokoll-Revision (ARCH-012), aber 2.x
-    # bedient zwei Aeren: der Legacy-`initialize`-Handshake deckelt bei
-    # 2025-11-25 (== PROTOCOL_VERSION), die moderne Envelope-Aera erreicht
-    # 2026-07-28. `tests/test_protocol.py` haelt beides nachgemessen fest.
+    # bedient zwei Aeren, und der Server benennt beide: der
+    # Legacy-`initialize`-Handshake deckelt bei 2025-11-25
+    # (== HANDSHAKE_PROTOCOL_VERSION), die moderne Envelope-Aera erreicht
+    # 2026-07-28 (== MODERN_PROTOCOL_VERSION). Beide Pins haben einen
+    # Drift-Guard in `tests/test_protocol.py`; was die Modern-Aera am Draht
+    # tut, misst `tests/test_modern_era.py` nach.
     "mcp[cli]>=2.0.0,<3",
     "httpx>=0.28.1",
     "pydantic>=2.13.4",

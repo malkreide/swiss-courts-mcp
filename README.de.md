@@ -154,12 +154,48 @@ SWISS_COURTS_FORCE_DUMP=1 python -m swiss_courts_mcp  # dann eine Suche absetzen
 
 ---
 
-## MCP-Protocol-Version
+## MCP-Protocol-Versionen
 
-Der Server pinnt die MCP-Protocol-Version **`2025-11-25`** (Konstante
-`PROTOCOL_VERSION` in `server.py`). Ein Regressionstest erkennt Drift gegen die
-installierte SDK-Version, sodass ein Protocol-Bump eine bewusste Änderung ist
-(Wert + CHANGELOG + diese Sektion). SDK-Updates kommen monatlich via Dependabot.
+Der Server bedient **zwei Protokoll-Ären** über denselben Endpunkt; die erste
+Anfrage des Clients entscheidet, welche er bekommt:
+
+| Ära | Revision | Konstante in `server.py` | Handshake |
+|-----|----------|--------------------------|-----------|
+| Legacy | `2025-11-25` | `HANDSHAKE_PROTOCOL_VERSION` | `initialize`, Session-ID |
+| Modern | `2026-07-28` | `MODERN_PROTOCOL_VERSION` | keiner — `_meta`-Envelope je Request |
+
+Beide Revisionen sind gepinnt, und beide haben einen Drift-Guard gegen die
+installierte SDK-Version — ein Protocol-Bump bleibt damit eine bewusste Änderung
+(Konstante + CHANGELOG + diese Sektion). SDK-Updates kommen monatlich via
+Dependabot.
+
+**Spec `2026-07-28` ist die Ära, die der SDK-eigene Client wählt.** `mcp.Client`
+probt `server/discover` und fällt nur bei Ablehnung auf den Handshake zurück;
+gegen diesen Server fällt er nicht zurück. Nachgemessen durch den
+zusammengebauten ASGI-Stack in `tests/test_modern_era.py`, nicht aus
+Konstantennamen geschlossen.
+
+Was in der Modern-Ära anders ist:
+
+- **Kein `initialize`, keine Session-ID.** Jeder POST steht für sich und trägt
+  in `params._meta` die Protokoll-Revision und die Client-Capabilities, dazu die
+  Routing-Header `MCP-Protocol-Version`, `Mcp-Method` und — bei `tools/call`,
+  `prompts/get`, `resources/read` — `Mcp-Name`.
+- **`server/discover`** ersetzt den Handshake für die Capability-Auskunft,
+  `subscriptions/listen` ersetzt die Änderungs-Notifications.
+- **`ping`, `logging/setLevel` und das `resources/subscribe`-Paar gibt es nicht
+  mehr.** In dieser Ära antwortet der Server darauf mit `-32601`; in der
+  Legacy-Ära bleiben sie erreichbar.
+- **`ttlMs` / `cacheScope`** hängen an den auflistenden Methoden (SEP-2549) —
+  siehe `CACHE_HINTS`.
+- **`serverInfo` wird in das `_meta` jeder Antwort gestempelt**, weil es keinen
+  Handshake gibt, der es einmalig überträgt. Der Stempel nennt Build-Version,
+  Anzeigename und Projekt-URL; der Zwecktext bleibt in `instructions`, und die
+  reist einmalig mit `server/discover`.
+
+Ein `initialize`, das `2026-07-28` anfragt, bekommt weiterhin `2025-11-25`
+zurück: der Handshake ist nicht der Weg in die Modern-Ära, und diese Antwort
+sagt nichts darüber, ob der Server sie spricht.
 
 ## Projekt-Phase
 

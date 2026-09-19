@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Sicherheit
 
+- **Auth ohne Issuerbindung nahm Tokens fremder Mandanten an (SEC-009).**
+  `JWTTokenVerifier._decode` setzte `verify_iss` auf
+  `bool(settings.oauth_issuer)`: fehlte `MCP_OAUTH_ISSUER`, entfiel die Prüfung
+  des `iss`-Claims lautlos — dasselbe Muster wie beim Publikum, nur auf der
+  anderen Seite des Tokens. Nachgemessen mit HS256 und korrektem Publikum: ein
+  Token mit `iss: https://fremder-tenant.example` wurde **akzeptiert**, und
+  eines ganz ohne `iss` ebenfalls; mit der Variable werden sie als
+  `InvalidIssuerError` bzw. `MissingRequiredClaimError` abgelehnt. Das trägt,
+  sobald mehrere Mandanten eine JWKS-URL teilen — der Normalfall bei einem
+  gehosteten IdP: die Signatur gilt dann für alle, nur `iss` trennt sie.
+
+  `MCP_OAUTH_ISSUER` ist deshalb **Pflicht**, sobald `MCP_AUTH_ENABLED=true`
+  ist: ohne die Variable entsteht gar kein Verifier mehr, mit einer
+  Fehlermeldung, die sie benennt. Der Wert wird **nicht** normalisiert —
+  abschliessender Schrägstrich inbegriffen, denn RFC 8414/9207 vergleichen
+  zeichengleich und manche IdP stellen `iss` mit Schrägstrich aus.
+
+  **Verhaltensänderung:** ein HTTP-Deployment mit aktivierter Auth und ohne
+  `MCP_OAUTH_ISSUER` startet nicht mehr. Beabsichtigt, aus demselben Grund wie
+  beim Publikum: es lief bisher mit einer Prüfung, die es nicht gab.
+
+- **Der Server nannte sich selbst als Authorization Server (SEC-009, RFC 9728).**
+  `_build_auth` setzte `issuer_url=settings.oauth_issuer or base`. Ohne Issuer
+  stand also die eigene Basis-URL in `authorization_servers` — und das ist der
+  Wert, den ein SDK-Client als `auth_server_url` übernimmt. Nachgemessen war die
+  Kette damit tot: unter dieser Adresse antworteten
+  `/.well-known/oauth-authorization-server`,
+  `/.well-known/openid-configuration`, `/authorize`, `/token` und `/register`
+  alle mit **404**, denn dieser Server ist ein Resource Server und stellt keine
+  Tokens aus. Der Rückfall ist entfernt, `issuer_url` ist unbedingt der IdP.
+
+  Der Verifier wird jetzt **vor** dem `AuthSettings` gebaut. Sonst scheiterte
+  eine Auth-Konfiguration ohne Issuer an `issuer_url=None` mit einem
+  Pydantic-Fehler über SDK-Feldnamen statt mit der Meldung, die dem Betreiber
+  die Variable nennt.
+
+- **Ein fehlender Erwartungswert ist jetzt eine Ablehnung (SEC-009).**
+  Dieser Befund korrigiert den Publikumseintrag weiter unten, der `verify_aud:
+  True` als zweite Schicht verbuchte: die `verify_*`-Flags tragen sie nicht. In
+  der pyjwt-Quelle (2.14.0, `api_jwt.py`) kehrt `_validate_iss(issuer=None)` in
+  der ersten Zeile zurück, und `_validate_aud(audience=None)` wirft nur, wenn
+  das Token ein `aud` *führt* — ein Token ganz ohne `aud` kam durch. Gefunden
+  hat es eine rote Gegenprobe, nicht eine Überlegung: der Test, der die
+  Issuerprüfung nachträglich entwaffnet, war zuerst rot und hatte recht.
+
+  `_decode` prüft deshalb selbst, ob Publikum und Issuer überhaupt vorliegen,
+  und lehnt sonst mit `MissingVerificationTargetError` ab — Unterklasse von
+  `jwt.InvalidTokenError`, also 401 statt 500, mit einem Log-Grund, der die
+  Konfiguration nennt und nicht das Token.
+
 - **Der Server schickte OAuth-Clients auf `0.0.0.0` (SEC-009, RFC 9728).**
   `_build_auth` setzte als `resource_server_url` die Bind-Adresse ein. Das SDK
   publiziert diesen Wert als Resource-Identifier unter
@@ -69,10 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `MCP_OAUTH_AUDIENCE` startet nicht mehr. Das ist beabsichtigt: es lief
   bisher mit einer Prüfung, die es nicht gab.
 
-  `verify_iss` bleibt bedingt. `MCP_OAUTH_ISSUER` ist weiterhin optional, und
-  `_build_auth` setzt ersatzweise die eigene Basis-URL als `issuer_url` ein —
-  ein erzwungenes `True` prüfte dort gegen einen Wert, den nie ein IdP
-  ausgestellt hat. Eigene Baustelle, hier nicht mitbehauptet.
+  `verify_iss` blieb hier bedingt und wurde als eigene Baustelle vermerkt.
+  Sie ist jetzt erledigt, siehe den Eintrag darüber.
 
 - **`AuthSettings.validate_token_resource` steht jetzt ausdrücklich auf
   `False`.** Ungesetzt verhält sich das Feld wie `False`, warnt aber

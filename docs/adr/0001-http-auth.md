@@ -64,12 +64,48 @@ Kombination mit einem `0.0.0.0`-Bind wäre er vollständig offen (NeighborJack).
      stellt dort `oauth_audience` ein — dasselbe Feld, das der Verifier bereits
      unbedingt prüft. Eine zweite Prüfung derselben Tatsache sichert nichts
      zusätzlich.
-   - **Offen:** ohne `MCP_OAUTH_ISSUER` trägt der Server sich selbst als
-     `authorization_servers` ein, was sachlich falsch ist — er stellt keine
-     Tokens aus. Die Adresse ist jetzt wenigstens erreichbar, und `_public_url`
-     warnt; richtig wird es erst mit gesetztem Issuer. Ein Zwang wie bei
-     `MCP_OAUTH_AUDIENCE` wäre denkbar, ist hier aber nicht gemessen: welche
-     Clients das Feld überhaupt auswerten, wurde nicht geprüft.
+   - **Nachtrag 19.9.2026 (SEC-009): `MCP_OAUTH_ISSUER` ist Pflicht** — der
+     offene Punkt darüber ist geschlossen, und die Begründung liegt anders als
+     dort vermutet. Nicht gemessen war, welche Clients `authorization_servers`
+     auswerten; das bleibt ungemessen und trägt die Entscheidung auch nicht.
+     Zwei Messungen tragen sie:
+
+     1. **Das `iss`-Claim wurde nicht geprüft.** `verify_iss` hing an
+        `bool(oauth_issuer)`. Ohne die Variable wurde ein Token mit
+        `iss: https://fremder-tenant.example` **akzeptiert**, und eines ganz
+        ohne `iss` ebenfalls; mit ihr `InvalidIssuerError` bzw.
+        `MissingRequiredClaimError`. Dieselbe Confused-Deputy-Gestalt wie beim
+        Publikum, und sie trägt, sobald mehrere Mandanten eine JWKS-URL teilen:
+        die Signatur gilt dann für alle, nur `iss` trennt sie.
+     2. **Die Discovery-Kette war tot.** `authorization_servers[0]` ist der
+        Wert, den ein SDK-Client als `auth_server_url` übernimmt
+        (`mcp/client/auth/oauth2.py`). Trug der Server sich selbst ein,
+        antworteten `/.well-known/oauth-authorization-server`,
+        `/.well-known/openid-configuration`, `/authorize`, `/token` und
+        `/register` alle mit 404 — gemessen. Der Rückfall auf die eigene Basis-URL
+        war also keine Milde, sondern ein Verweis ins Leere; er ist entfernt.
+
+     Der Wert wird **nicht** normalisiert. Anders als bei `MCP_RESOURCE_URL`,
+     wo ein abschliessender Schrägstrich abgeschnitten wird, ist er hier
+     bedeutungstragend: `iss` mit Schrägstrich gegen einen Issuer ohne ihn ergibt
+     gemessen `InvalidIssuerError`, und manche IdP stellen `iss` mit Schrägstrich
+     aus.
+
+     **Nebenbefund, und er korrigiert den Nachtrag über dem Publikumszwang:**
+     die `verify_*`-Flags tragen die zweite Schicht nicht. In der pyjwt-Quelle
+     (2.14.0) kehrt `_validate_iss(issuer=None)` in der ersten Zeile zurück, und
+     `_validate_aud(audience=None)` wirft nur, wenn das Token ein `aud` *führt* —
+     ein Token ganz ohne `aud` kam durch. Aufgefallen ist das an einer roten
+     Gegenprobe, nicht an einer Überlegung. `_decode` liest deshalb einen
+     fehlenden Erwartungswert selbst als Ablehnung
+     (`MissingVerificationTargetError`, Unterklasse von
+     `jwt.InvalidTokenError`, also 401 und kein 500).
+
+   - **Offen bleibt:** `MCP_RESOURCE_URL` hat keinen Zwang. Die Rückfallebene
+     auf die Bind-Adresse ist dort anders als beim Issuer nicht sinnlos — bei
+     einem Loopback-Bind stimmt sie —, und das SDK verlangt einen Wert. Ob eine
+     Warnung genügt oder ein Zwang bei Nicht-Loopback-Bind richtig wäre, ist
+     nicht entschieden.
 3. **Sicherer Bind-Default** `127.0.0.1`; `0.0.0.0` nur bewusst per
    `MCP_HOST` + `MCP_ALLOW_PUBLIC_BIND` (im Dockerfile gesetzt).
 4. **`stateless_http`** standardmässig aktiv → horizontale Skalierung ohne

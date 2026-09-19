@@ -551,11 +551,29 @@ wie der Code: Nichts ist rot, weil nichts geprüft wird, worauf es ankommt.
 Default-Branch ist `master`, nicht `main` — der Frische-Check oben lautet hier
 `git fetch origin master && git rev-list --count HEAD..origin/master`.
 
-ruff ist auf `0.16.3` gepinnt, an genau einer Stelle (`dev`-Extra in
-`pyproject.toml`); `pip install -e ".[dev]"` liefert damit die CI-Version.
+ruff ist an genau einer Stelle gepinnt: im `dev`-Extra von `pyproject.toml`.
+`pip install -e ".[dev]"` liefert damit die CI-Version. **Die Nummer steht
+bewusst nicht hier** — sie wird per Dependabot gehoben, und eine zweite Stelle
+mit derselben Zahl wäre genau die Drift-Quelle, gegen die der Kommentar am Pin
+selbst argumentiert: «Zwei Pins, die übereinstimmen müssen, sind eine
+Drift-Quelle und keine Absicherung.»
+
+Hier stand bis zum 19.9.2026 «ruff ist auf `0.16.3` gepinnt, an genau einer
+Stelle» — und der Satz widerlegte sich selbst: Er war die zweite Stelle, und
+als Dependabot am selben Morgen auf `0.16.5` hob, zeigte er ins Leere. Wer ihm
+folgte, installierte 0.16.3 und lief in den Abbruch von
+`check_ruff_pin.py`, der die CI-Version aus `pyproject.toml` liest. Die
+aktuelle Nummer also dort nachsehen, nicht hier:
+
+```bash
+grep 'ruff==' pyproject.toml
+```
 
 Vor dem Lauf `ruff --version` prüfen: ein älteres ruff früher im `PATH`
-schlägt den Pin, ohne dass der Install etwas meldet.
+schlägt den Pin, ohne dass der Install etwas meldet. Genau so ist es am
+19.9.2026 passiert — `/root/.local/bin/ruff` lag vor `/usr/local/bin/ruff`,
+und der Install hatte nichts gemeldet. `check_ruff_pin.py` prüft deshalb beide
+Wege, `ruff …` und `python -m ruff …`.
 
 Gates, wörtlich aus `ci.yml` (Python 3.11 / 3.12 / 3.13):
 

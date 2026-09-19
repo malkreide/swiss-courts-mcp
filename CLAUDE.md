@@ -341,16 +341,28 @@ ohne dass jemand hineingesehen hat, und am 22.8. noch einmal 43.
 
   Sie erschien also auf einem Draft und blockierte den späteren Lauf nicht.
   **Mehr trägt die Messung nicht, und «an einen Draft gebunden» stand hier
-  eine Fassung lang zu Unrecht:** #84 war im selben Repo von 10:14:09 bis
-  10:17:45 ein Draft — 3 min 36 s — und bekam **keine** Environment-Meldung,
-  während #83 sie zehn Sekunden nach dem Anlegen hatte. Sie kommt also nicht
-  auf jedem Draft. Wovon sie abhängt, was sie fachlich meint und ob ein Repo
-  ohne Environment sie auch nach «ready» zeigt, bleibt **ungemessen**.
+  eine Fassung lang zu Unrecht.** Drei Drafts im selben Repo, derselbe
+  Vormittag:
 
-  Zwei Drafts, zwei Ergebnisse, derselbe Vormittag — und der Satz darüber war
-  aus dem ersten gebildet, bevor der zweite vorlag. Genau die Sorte
-  Verallgemeinerung, gegen die diese Datei geschrieben ist, nur diesmal von ihr
-  selbst.
+  | PR | angelegt | Environment-Meldung |
+  |---|---|---|
+  | #83 | 09:23:50 | **ja**, 09:24:00 (10 s) |
+  | #84 | 10:14:09 | **nein** — 3 min 36 s Draft, nichts |
+  | #85 | 10:31:55 | **ja**, 10:32:07 (12 s) |
+
+  Zwei von drei. Sie kommt also **nicht auf jedem** Draft und ist ebenso wenig
+  eine Aussage über das Repo. Wovon sie abhängt, was sie fachlich meint und ob
+  ein Repo ohne Environment sie auch nach «ready» zeigt, bleibt
+  **ungemessen** — auch der Abstand zum vorigen abgeschlossenen Lauf, der bei
+  #84 mit 1 min 42 s deutlich kürzer war als bei #83 und #85 (je rund 13 min).
+  Das ist eine Auffälligkeit in drei Datenpunkten und keine Ursache; wer sie
+  zur Erklärung macht, hat dieselbe Verallgemeinerung noch einmal gebaut.
+
+  Denn genau die stand hier: der Satz war aus #83 allein gebildet, bevor #84
+  vorlag. Die Sorte Verallgemeinerung, gegen die diese Datei geschrieben ist,
+  diesmal von ihr selbst — und #85 hätte sie wieder bestätigt, wenn #84 nicht
+  dazwischen gelegen hätte. Zwei Beobachtungen, die in dieselbe Richtung
+  zeigen, sind keine Regel.
 
   Nebenbefund zur Form: die Tabelle kam als **neuer** Kommentar
   (`5740959405`), die Environment-Meldung (`5740744996`) blieb unverändert
@@ -668,7 +680,8 @@ echter Review an. Bevor also jemand eine Environment anlegt, weil die Meldung
 es verlangt: nachsehen, ob im selben Repo kurz zuvor ein Review durchlief, und
 ob der PR ein Draft war. Trifft eines zu, ist die Meldung unerklärt und die
 Environment nicht die Ursache. Umgekehrt ist ihr **Ausbleiben** auf einem Draft
-ebenfalls nichts — #84 blieb 3 min 36 s Draft und bekam sie nicht.
+ebenfalls nichts — von drei Drafts desselben Vormittags bekamen sie zwei, #84
+nicht.
 
 ---
 

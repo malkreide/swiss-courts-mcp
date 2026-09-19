@@ -244,6 +244,21 @@ etwas geändert hätte. Den Fall gezielt wählen und beide Zweige fahren.
 PR ohne jeden Check ist selten ein Repo ohne CI, meistens ein
 Merge-Konflikt: GitHub berechnet dafür keinen Merge-Commit und startet nichts.
 
+**Den CI-Stand über `get_check_runs` lesen, nicht über `get_status`.** Die
+Status-Abfrage bedient die alte Commit-Status-API, und dieses Repo benutzt
+ausschliesslich Check-Runs. Sie antwortet deshalb *immer* mit
+`state: "pending"` bei `total_count: 0` — am 19.9.2026 gemessen auf drei PRs,
+darunter #80 und #82, die beide mit vier grünen Check-Runs gemergt waren:
+
+```
+{"state": "pending", "sha": "…", "total_count": 0, "statuses": []}
+```
+
+Die leere Menge trägt hier also das Wort «pending», und wer nur das Feld liest,
+hält eine grüne CI für laufend und wartet auf etwas, das schon da ist. Dieselbe
+Klasse wie der 403 weiter unten: ein Nichts, verpackt als Auskunft. Das `0`
+daneben ist der Hinweis — kein Eintrag heisst keine Messung.
+
 Ein Codex-Review auf einem PR wird beantwortet oder behoben, nie ignoriert.
 
 ## Wenn Codex gar nicht erst hinsieht
@@ -297,13 +312,33 @@ ohne dass jemand hineingesehen hat, und am 22.8. noch einmal 43.
   Infokasten, den Codex unter jeden Review setzt, behauptet weiterhin eine
   Reaktion («otherwise it will react with 👍») — am 23.8. kam in sechs Repos
   die Meldung und in keinem die Reaktion. Der Kasten ist keine Quelle.
-- **Der PR ist ein Draft** — darauf läuft Codex nicht an.
+- **Der PR ist ein Draft** — darauf läuft *kein Review* an. Dass ein Draft
+  deshalb **gar keinen** Kommentar bekommt, stand hier bis zum 19.9.2026 und ist
+  widerlegt: PR #83 in `swiss-courts-mcp` wurde um 09:23:50 als Draft angelegt
+  und bekam um **09:24:00** — zehn Sekunden später, `draft: true` — die
+  Environment-Meldung von unten. Ein Draft ist also nicht stumm. Was dort
+  ausbleibt, ist der Review, nicht die Reaktion.
 - **Das Kontingent ist weg** — dann schreibt er die Meldung oben.
 - **Für das Repo fehlt eine Environment** — dann schreibt er:
 
   ```
   To use Codex here, create an environment for this repo.
   ```
+
+  **Diesen Text nicht als Auskunft über das Repo lesen.** Am 19.9.2026 kam er
+  in `swiss-courts-mcp` auf dem Draft #83 um 09:24:00 — und um **09:10:47**,
+  dreizehn Minuten davor, hatte im *selben Repo* der Review auf #82 mit
+  `✅ Completed` geschlossen. Eine fehlende Environment kann das nicht erklären;
+  ohne sie wäre #82 nicht gelaufen. Was der Satz stattdessen bedeutet, ist
+  **ungemessen** — denkbar sind ein anderer Prüfpunkt für Drafts, eine Änderung
+  in diesen dreizehn Minuten oder zwei Codex-Funktionen mit getrennten
+  Anforderungen. Keines davon ist belegt, und die Meldung nennt keine davon.
+
+  Dieselbe Klasse wie der 403 weiter oben: dort war eine Sperre als Fund-
+  Fehlschlag verpackt, hier ist eine unbekannte Ursache als
+  Konfigurationsdiagnose verpackt. Die Lehre ist beide Male die gleiche — den
+  Satz zitieren, nicht seine Selbstauskunft übernehmen, und eine
+  Positivkontrolle im selben Repo dagegenhalten.
 
 Der vierte kam erst zum Vorschein, als der dritte wegfiel, und das ist kein
 Zufall: Die Prüfungen liegen hintereinander. Dass es diese Reihenfolge ist und
@@ -326,9 +361,11 @@ ein, den dieser Abschnitt verhindern soll, nur in die andere Richtung.
 sich an der Form: Ein Review **mit** Befund ist ein Review-Objekt
 («💡 Codex Review», mit Commit-Angabe); ein Review **ohne** Befund und die
 beiden Ausfallmeldungen — Kontingent wie Environment — sind gewöhnliche
-Issue-Kommentare und trennen sich nur im Text. Beim Draft gibt es überhaupt
-nichts, weil Codex nicht anläuft; ein kommentarloser Draft ist deshalb kein
-Beleg, sondern ein nicht durchgeführter Test.
+Issue-Kommentare und trennen sich nur im Text. Beim Draft bleibt der Review aus
+— ein kommentarloser Draft ist deshalb kein Beleg, sondern ein nicht
+durchgeführter Test. Dass dort *nichts* kommt, stimmt allerdings nicht: die
+Environment-Meldung erschien am 19.9. auf einem Draft (siehe oben). Ein
+Kommentar auf einem Draft ist also kein Hinweis darauf, dass doch geprüft wurde.
 
 Das sind verschiedene Abfragen — `get_reviews` fürs Objekt, `get_comments` für
 alles andere; wer nur eine nimmt, übersieht den Rest. Genau so ist die
@@ -375,7 +412,10 @@ sie unsichtbar geblieben:
 
 Auf #73 entstand der Kommentar als «Running» und wurde eine Minute später zu
 «Completed» editiert — dieselbe `id` (`5739967817`). Auf #74 stand schon beim
-Anlegen «Completed», `created_at` und `updated_at` sind identisch. **`created_at`
+Anlegen «Completed», `created_at` und `updated_at` sind identisch. #82 wiederholt
+den #73-Fall am selben Tag und mit derselben Mechanik: `created_at` 09:09:50 mit
+`🔄 Running`, `updated_at` 09:10:47 mit `✅ Completed`, `id` `5740680118`
+unverändert. **`created_at`
 sagt damit nichts über den Zustand des Reviews.** Wer den Kommentar einmal liest
 und zwischenspeichert, sieht auf #73 für immer «Running»; wer ihn gar nicht
 erneut abruft, hält einen abgeschlossenen Review für laufend. Den Text jedes Mal
@@ -396,8 +436,10 @@ Was diese beiden Läufe **nicht** hergeben:
 Zwei Nebenbefunde aus denselben Läufen:
 
 - **Die 👍-Reaktion blieb erneut aus** — `reactions.total_count: 0` auf beiden
-  Kommentaren, während der Infokasten sie weiter behauptet. Damit steht die
-  Behauptung des Kastens gegen acht Beobachtungen (sechs am 23.8., zwei hier).
+  Kommentaren, während der Infokasten sie weiter behauptet. Mit #80 und #82,
+  beide am 19.9. ebenfalls auf `total_count: 0` gemessen, steht die Behauptung
+  des Kastens gegen zehn Beobachtungen (sechs am 23.8., vier hier). Auf #75 und
+  #76 wurde die Reaktion nicht nachgesehen; die zählen also nicht mit.
 - **Ein Merge bricht den Lauf nicht ab**, auch nicht mitten im Lauf. Drei PRs
   am 19.9., alle vor dem Ende des Reviews gemergt, alle drei liefen zu Ende:
   #73 (Merge 06:36:19, drei Sekunden nach «ready», fertig 06:37:28), #74 (Merge
@@ -406,6 +448,15 @@ Zwei Nebenbefunde aus denselben Läufen:
   ihn nicht (fertig 07:05:07). Der Review ist also nicht verloren; er kommt
   bloss zu spät, um noch etwas zu verhindern, und ein Befund stünde dann schon
   in `master`.
+
+  **Und er startet sogar erst nach dem Merge.** Zweimal am 19.9. lag der Merge
+  *vor* dem `Running since`: #80 (Merge 08:34:10, Start 08:34:12) und #82
+  («ready» 09:09:41, Merge 09:09:45, Start 09:09:48, Kommentar 09:09:50). Der
+  Auslöser ist das Umschalten von Draft auf ready, und ein bereits geschlossener
+  PR hält ihn nicht auf. Das ist stärker als der Satz darüber: nicht bloss ein
+  laufender Review übersteht den Merge, sondern ein noch nicht begonnener wird
+  von ihm auch nicht verhindert. Wer also mergt, um dem Review zuvorzukommen,
+  bekommt ihn trotzdem — nur eben in den Default-Branch hinein.
 
 - **Die Dauer streut, und zwar erheblich.** Vier Läufe am 19.9., vier Diffs
   ähnlicher Grösse im selben Repo, alle innerhalb von 34 Minuten:
@@ -416,9 +467,12 @@ Zwei Nebenbefunde aus denselben Läufen:
   | #74 | 06:56:15 | — | 06:57:18 | **63 s** |
   | #75 | 07:02:03 | 07:02:09 | 07:05:07 | **184 s** |
   | #76 | 07:09:43 | — | 07:10:45 | **62 s** |
+  | #82 | 09:09:41 | 09:09:48 | 09:10:47 | **66 s** |
 
   62 bis 184 Sekunden, Faktor 2,97 — der längste Lauf brauchte fast das
-  Dreifache des kürzesten. Eine Wartezeit lässt sich daraus nicht ableiten, und
+  Dreifache des kürzesten. Der fünfte Lauf (#82, gut drei Stunden später) fügt
+  mit 66 s nichts Neues hinzu und **verschiebt die Spanne nicht**; er steht hier,
+  weil er die Positivkontrolle für den Befund ganz unten liefert. Eine Wartezeit lässt sich daraus nicht ableiten, und
   ein früherer Stand dieses Abschnitts tat es doch: dort stand «wer eine Minute
   wartet, hat den Prüfer», gestützt auf die ersten zwei Punkte. Der dritte
   widerlegt es, der vierte hätte ihn wieder bestätigt.
@@ -451,6 +505,34 @@ Zwei Nebenbefunde aus denselben Läufen:
   Eigenschaft der Sache. Wer aus einem stehenden Status eine Ursache macht,
   erfindet sie — nachgemessen wird, bis der Status sich ändert.
 
+- **Aber es endet nicht immer, und dann hat die Regel darüber ein Loch.** Auf
+  #80 stand die Tabelle am 19.9. um 09:21:56 noch auf `🔄 Running since
+  08:34:12`, `updated_at` unverändert auf 08:34:14 — **47 Minuten**, viermal
+  nachgemessen (08:51, 09:08, 09:11, 09:21), `get_reviews` leer. Gegen 184 s
+  Maximum der Reihe oben ist das der Faktor 15.
+
+  **Die Positivkontrolle steht im selben Repo und in derselben Stunde:** #82
+  wurde 35 Minuten *nach* #80 ausgelöst und war nach 66 s fertig. Ein
+  erschöpftes Kontingent, eine fehlende Environment oder ein Ausfall des
+  Dienstes erklären #80 damit nicht — sonst wäre #82 mitgefallen. Genau so wird
+  aus einem «nicht fertig» eine Messung: eine gleichzeitige Abfrage findet
+  etwas.
+
+  Was die Beobachtungen **nicht** hergeben: die Ursache. Und ob dieser Lauf je
+  endet — die 47 Minuten sind der Abstand zweier Beobachtungen, nicht eine
+  Dauer, und der Absatz darüber gilt weiter: ein stehender Status ist kein
+  Abbruch.
+
+  **Praktisch heisst das, dass «auf den Beleg warten» eine Abbruchbedingung
+  braucht.** Die Regel unten sagt zu Recht, keine Sekunden zu zählen — aber
+  wer ohne Frist auf ein `Completed` wartet, das nicht kommt, wartet endlos.
+  Steht der Status weit jenseits der gemessenen Spanne, also nach einer
+  Positivkontrolle im selben Repo: den Zustand **datiert festhalten** und die
+  Ursache offen nennen, statt weiter zu pollen oder ihn zu deuten. Ob ein
+  `@codex review` auf einem gemergten PR einen neuen Lauf auslöst, ist
+  **ungemessen** — der naheliegende Ausweg ist also keiner, solange es niemand
+  geprüft hat.
+
 Und ein befundloser Lauf ist kein Freispruch. Am 23.8. lief derselbe Text durch
 42 Reviews: 36 meldeten denselben P2-Befund, 6 die Befundlos-Meldung — gleiche
 Eingabe, gegenteiliges Urteil, alles in denselben neun Minuten. Ein sauberer
@@ -468,8 +550,8 @@ Findet nur, wo er *kommentiert* hat. Repos ohne PR-Aktivität tauchen nicht auf
 
 Zweiter Weg, den Prüfer zu verlieren, ganz ohne Kontingentproblem: zu schnell
 mergen. Am 21./22.8. lagen zwischen «ready for review» und Merge mehrfach drei
-bis fünf Sekunden, am 19.9. in `swiss-courts-mcp` noch zweimal dasselbe (#73:
-drei Sekunden, #74: vier). Codex wird beim Umschalten von Draft auf ready
+bis fünf Sekunden, am 19.9. in `swiss-courts-mcp` noch dreimal dasselbe (#73:
+drei Sekunden, #74: vier, #82: vier). Codex wird beim Umschalten von Draft auf ready
 ausgelöst und braucht danach Zeit; wer sofort mergt, hat das Häkchen gesetzt und
 den Review nicht abgewartet.
 
@@ -515,6 +597,13 @@ an, und zwar **je Repo**. Die Meldung sagt es selbst («for this repo»), und am
 Review; in den übrigen Repos lief Codex am selben Morgen durch. Eine
 Environment fürs Konto genügt also nicht — wer eine anlegt und den Rest für
 erledigt hält, mergt weiter Ungeprüftes.
+
+**Umgekehrt gilt das nicht:** die Meldung belegt nicht, dass für dieses Repo
+keine Environment existiert. Am 19.9.2026 kam sie in `swiss-courts-mcp`
+dreizehn Minuten nach einem abgeschlossenen Review desselben Repos. Bevor also
+jemand eine Environment anlegt, weil die Meldung es verlangt: nachsehen, ob im
+selben Repo kurz zuvor ein Review durchlief. Lief einer, ist die Meldung
+unerklärt und die Environment nicht die Ursache.
 
 ---
 

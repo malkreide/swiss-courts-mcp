@@ -1282,6 +1282,40 @@ def _build_auth(settings: Settings):
         issuer_url=settings.oauth_issuer or base,
         resource_server_url=base,
         required_scopes=settings.required_scopes or None,
+        # Explizit False, nicht ungesetzt. Ungesetzt verhaelt sich heute wie
+        # False, warnt aber — und 3.0 dreht den Default bei gesetztem
+        # `resource_server_url` auf True. Die Entscheidung gehoert also hierher
+        # und nicht in einen kuenftigen SDK-Bump.
+        #
+        # False ist hier die richtige Seite, und zwar aus zwei Gruenden:
+        #
+        # 1. Der Verifier prueft das Publikum selbst — seit
+        #    `JWTTokenVerifier.__init__` ohne `MCP_OAUTH_AUDIENCE` gar nicht
+        #    mehr entsteht, unbedingt. Genau diesen Fall nennt die
+        #    SDK-Beschreibung als Grund fuer False.
+        #
+        # 2. True wuerde hier jedes echte Token abweisen. Das SDK vergleicht
+        #    `AccessToken.resource` als URL literal mit `resource_server_url`
+        #    (`bearer_auth._issued_for_this_resource`), und dieser Server
+        #    stellt dort `settings.oauth_audience` ein. Nachgemessen am
+        #    zusammengebauten Stack, `initialize` mit gueltigem Bearer:
+        #
+        #      aud fehlt,                      True  -> 401
+        #      aud "swiss-courts" (keine URL), True  -> 401
+        #      aud == "http://127.0.0.1:8000", True  -> 200
+        #
+        #    Nur ein Publikum, das woertlich die Bind-URL ist, kommt durch.
+        #    `base` ist aber die Bind-Adresse, nicht der Name, unter dem der
+        #    Server erreicht wird: hinter einem Proxy ist das ein oeffentlicher
+        #    DNS-Name, und `0.0.0.0:8000` ist gar keine Adresse, die ein IdP je
+        #    in ein `aud` schreiben wuerde. True zu setzen, hiesse also, den
+        #    Server fuer jede reale Konfiguration dichtzumachen.
+        #
+        # Was dafuer fehlt, ist eine Einstellung fuer die *oeffentliche*
+        # Resource-URL. Solange es die nicht gibt, ist `resource_server_url`
+        # hier eine Verlegenheitsangabe, und die Publikumspruefung liegt beim
+        # Verifier — dort, wo sie nachgemessen greift.
+        validate_token_resource=False,
     )
     return auth_settings, JWTTokenVerifier(settings)
 

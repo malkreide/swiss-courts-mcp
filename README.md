@@ -130,11 +130,26 @@ Relevant environment variables (see [`.env.example`](.env.example)):
 | `MCP_AUTH_ENABLED` | `false` | Enable bearer-token auth for HTTP. |
 | `MCP_AUTH_SECRET` | — | HS256 signing key (dev). |
 | `MCP_OAUTH_JWKS_URL` | — | JWKS URL for RS256 validation (production). |
+| `MCP_OAUTH_AUDIENCE` | — | **Required with auth.** Resource identifier the IdP binds tokens to (`aud`). |
+| `MCP_OAUTH_ISSUER` | — | Expected token issuer (optional). |
 | `MCP_REQUIRED_SCOPES` | — | Comma-separated required scopes. |
 | `MCP_CORS_ORIGINS` | — | Comma-separated allowed origins (no wildcard in prod). |
 
 Authentication validates the user identity from the JWT `sub` claim only; see
 [ADR 0001](docs/adr/0001-http-auth.md).
+
+**`MCP_OAUTH_AUDIENCE` is mandatory once auth is on.** The `aud` claim is what
+binds a token to *this* server. Without it the verifier did not check the
+audience at all and accepted any correctly signed token from the same issuer —
+including one minted for a different service (confused deputy). The server now
+refuses to start in auth mode without it.
+
+The SDK's own `validate_token_resource` stays **off** for a measured reason: it
+compares the token's resource indicator literally against
+`resource_server_url`, which here is the *bind* address. A token whose audience
+is not that exact URL is rejected with 401 — so switching it on would lock out
+every real client while the audience check above is what actually protects the
+server.
 
 ### Offline fallback (env)
 

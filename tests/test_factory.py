@@ -19,6 +19,9 @@ def test_http_server_with_auth_builds():
     settings = Settings(
         auth_enabled=True,
         auth_secret="x" * 32,
+        # Pflicht seit der Publikumsbindung: ohne `oauth_audience` entsteht gar
+        # kein Verifier mehr (siehe tests/test_security.py).
+        oauth_audience="swiss-courts-mcp",
         host="0.0.0.0",  # noqa: S104 — Container-Szenario
         stateless_http=True,
         required_scopes=["courts:read"],

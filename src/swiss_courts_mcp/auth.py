@@ -13,6 +13,11 @@ Zwei Validierungsmodi:
 * **RS256 via JWKS** — asymmetrisch gegen die JWKS-URL des IdP
   (``MCP_OAUTH_JWKS_URL``), für Produktion.
 
+In beiden Modi ist ``MCP_OAUTH_AUDIENCE`` Pflicht: das ``aud``-Claim bindet das
+Token an *diesen* Server. Fehlte es, prüfte dieser Verifier das Publikum nicht
+und nahm jedes korrekt signierte Token desselben Issuers an — auch eines, das
+für einen ganz anderen Dienst ausgestellt wurde.
+
 Nur relevant im HTTP-Modus mit ``MCP_AUTH_ENABLED=true``. Der stdio-Transport
 läuft ohne Auth (lokal = vertrauenswürdig, SEC-006).
 """
@@ -46,16 +51,43 @@ class JWTTokenVerifier(TokenVerifier):
                 "MCP_AUTH_ENABLED=true erfordert entweder MCP_AUTH_SECRET "
                 "(HS256) oder MCP_OAUTH_JWKS_URL (RS256)."
             )
+        if not settings.oauth_audience:
+            # Ohne Publikum prueft `_decode` das `aud`-Claim nicht — und ein
+            # korrekt signiertes Token, das derselbe Issuer fuer einen ANDEREN
+            # Dienst ausgestellt hat, kommt durch. Nachgemessen, nicht
+            # geschlossen: ein Token mit
+            # `aud: "https://ganz-anderer-dienst.example"` wurde ohne diese
+            # Pruefung akzeptiert und mit ihr als `InvalidAudienceError`
+            # abgelehnt. Das ist der klassische Confused Deputy, und die
+            # Pflicht hier ist der Grund, warum `AuthSettings` in
+            # `server._build_auth` mit `validate_token_resource=False`
+            # wahrheitsgemaess sagen darf, der Verifier pruefe selbst.
+            raise AuthConfigError(
+                "MCP_AUTH_ENABLED=true erfordert MCP_OAUTH_AUDIENCE — den "
+                "Resource-Identifier, auf den der IdP Tokens fuer diesen "
+                "Server bindet. Ohne ihn wird das aud-Claim nicht geprueft, "
+                "und Tokens fuer fremde Dienste desselben Issuers gelten hier."
+            )
         if settings.oauth_jwks_url:
             self._jwks_client = jwt.PyJWKClient(settings.oauth_jwks_url)
 
     def _decode(self, token: str) -> dict:
+        # `verify_aud` steht fest auf True: der Konstruktor laesst keinen
+        # Verifier ohne Publikum entstehen. Vorher hing das Flag an
+        # `bool(oauth_audience)` — die Pruefung schaltete sich also selbst ab,
+        # sobald die Variable fehlte, und zwar lautlos.
+        #
+        # `verify_iss` bleibt bedingt: `oauth_issuer` ist weiterhin optional,
+        # und `_build_auth` setzt als `issuer_url` ersatzweise die eigene
+        # Basis-URL ein. Ein hier erzwungenes True pruefte dann gegen einen
+        # Wert, den nie ein IdP ausgestellt hat. Das ist eine eigene Baustelle
+        # und wird hier nicht mitbehauptet.
         common = {
             "audience": self.settings.oauth_audience,
             "issuer": self.settings.oauth_issuer,
             "options": {
                 "require": ["exp", "sub"],
-                "verify_aud": bool(self.settings.oauth_audience),
+                "verify_aud": True,
                 "verify_iss": bool(self.settings.oauth_issuer),
             },
         }

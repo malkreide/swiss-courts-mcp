@@ -59,9 +59,14 @@ def test_default_host_is_loopback(monkeypatch):
 #: Seit dem Publikumszwang ist er in jedem Auth-Setup Pflicht.
 AUDIENCE = "swiss-courts-mcp"
 
+#: Der Issuer des IdP. Seit dem Issuerzwang ebenfalls Pflicht — ohne ihn
+#: entsteht kein Verifier, weshalb `_settings` ihn vorbelegt.
+ISSUER = "https://idp.example.ch"
+
 
 def _settings(secret="test-secret-please-change-0123456789abcdef", **kw):
     kw.setdefault("oauth_audience", AUDIENCE)
+    kw.setdefault("oauth_issuer", ISSUER)
     return Settings(auth_enabled=True, auth_secret=secret, **kw)
 
 
@@ -118,12 +123,22 @@ def test_auth_enabled_without_audience_raises():
         JWTTokenVerifier(Settings(auth_enabled=True, auth_secret="x" * 40, oauth_audience=None))
 
 
-def _token_for(audience: str | None, secret: str) -> str:
-    """Ein korrekt signiertes Token mit frei waehlbarem `aud`-Claim.
+_WEGLASSEN = object()
 
-    Nicht ueber `issue_dev_token`: das setzt `aud` aus denselben Settings, mit
-    denen der Verifier prueft, und koennte eine fremde Publikumsangabe
+
+def _token_for(audience: str | None, secret: str, issuer=_WEGLASSEN) -> str:
+    """Ein korrekt signiertes Token mit frei waehlbarem `aud`- und `iss`-Claim.
+
+    Nicht ueber `issue_dev_token`: das setzt beide Claims aus denselben
+    Settings, mit denen der Verifier prueft, und koennte eine fremde Angabe
     deshalb gar nicht ausdruecken.
+
+    `issuer` hat einen eigenen Weglass-Marker statt `None` als Default: sonst
+    liesse sich «Claim ganz weg» nicht von «nicht ueberschrieben» trennen, und
+    genau dieser Unterschied ist bei `iss` ein eigener Testfall. Vorbelegt ist
+    der richtige Issuer, damit ein Test ueber das Publikum nicht am Issuer
+    scheitert — sonst waere jede Ablehnung hier gruen, ohne dass der Grund
+    stimmt.
     """
     import jwt
 
@@ -131,6 +146,10 @@ def _token_for(audience: str | None, secret: str) -> str:
     claims: dict = {"sub": "u", "iat": now, "exp": now + 3600, "scope": ""}
     if audience is not None:
         claims["aud"] = audience
+    if issuer is _WEGLASSEN:
+        claims["iss"] = ISSUER
+    elif issuer is not None:
+        claims["iss"] = issuer
     return jwt.encode(claims, secret, algorithm="HS256")
 
 
@@ -184,6 +203,15 @@ async def test_die_publikumspruefung_schaltet_sich_nicht_selbst_ab():
 
     assert await verifier.verify_token(fremd) is None
 
+    # Und der Fall, der bis zum 19.9.2026 durchkam. `verify_aud: True` allein
+    # traegt die Schicht nicht: `_validate_aud(audience=None)` wirft nur, wenn
+    # das Token ein `aud` FUEHRT — gemessen und in der pyjwt-Quelle nachgelesen.
+    # Ein Token ganz ohne `aud` wurde hier AKZEPTIERT. Den Riegel gegen den
+    # fehlenden Erwartungswert in `_decode` neutralisiert man, und genau diese
+    # Zusicherung faellt.
+    ohne_aud = _token_for(None, s.auth_secret)
+    assert await verifier.verify_token(ohne_aud) is None
+
 
 def test_token_ttl_reflected_in_exp():
     s = _settings()
@@ -195,6 +223,130 @@ def test_token_ttl_reflected_in_exp():
     # scheitert dieser Test an `InvalidAudienceError` statt an der TTL.
     claims = jwt.decode(token, s.auth_secret, algorithms=["HS256"], audience=AUDIENCE)
     assert claims["exp"] - int(time.time()) <= 60
+
+
+# --- SEC-009: Issuerbindung (iss) ist Pflicht ---
+
+
+def test_auth_enabled_without_issuer_raises():
+    """Ohne Issuer darf kein Verifier entstehen.
+
+    Derselbe Zuschnitt wie beim Publikum, andere Seite des Tokens: `verify_iss`
+    hing an `bool(oauth_issuer)`, fehlte die Variable, schaltete sich die
+    Pruefung lautlos ab — und der Server galt weiterhin als «Auth aktiviert».
+    """
+    with pytest.raises(AuthConfigError, match="MCP_OAUTH_ISSUER"):
+        JWTTokenVerifier(
+            Settings(
+                auth_enabled=True,
+                auth_secret="x" * 40,
+                oauth_audience=AUDIENCE,
+                oauth_issuer=None,
+            )
+        )
+
+
+async def test_token_von_fremdem_mandanten_wird_abgelehnt():
+    """Der Confused Deputy, den die Issuerpflicht schliesst.
+
+    Das Publikum allein reicht dafuer nicht. Teilen mehrere Mandanten eine
+    JWKS-URL — der Normalfall bei einem gehosteten IdP —, ist die Signatur fuer
+    alle gueltig, und ein Mandant koennte ein Token auf DIESES Publikum
+    ausstellen. Nur `iss` trennt sie. Hier steht dasselbe HS256-Secret fuer
+    dieselbe Lage, mit korrektem `aud`.
+
+    Positivkontrolle im selben Test: das Token des richtigen Issuers kommt
+    durch. Sonst waere die Ablehnung auch mit einem Verifier gruen, der
+    grundsaetzlich alles abweist.
+    """
+    s = _settings()
+    verifier = JWTTokenVerifier(s)
+
+    fremd = _token_for(AUDIENCE, s.auth_secret, issuer="https://fremder-tenant.example")
+    assert await verifier.verify_token(fremd) is None
+
+    eigen = _token_for(AUDIENCE, s.auth_secret)
+    assert await verifier.verify_token(eigen) is not None
+
+
+async def test_token_ohne_iss_claim_wird_abgelehnt():
+    """Auch das Fehlen des Claims ist eine Ablehnung — und `require` sagt das nicht.
+
+    Im `options["require"]` von `_decode` steht kein `"iss"`. Die Ablehnung
+    kommt von pyjwt selbst, das das Claim bei gesetztem `issuer` einfordert
+    (`MissingRequiredClaimError`). Dieser Test ist der Grund, warum dort kein
+    zweiter Pin derselben Tatsache steht: aendert pyjwt das Verhalten, faellt
+    hier ein Test statt still ein Token durchzukommen.
+    """
+    s = _settings()
+    ohne_iss = _token_for(AUDIENCE, s.auth_secret, issuer=None)
+    assert await JWTTokenVerifier(s).verify_token(ohne_iss) is None
+
+
+async def test_die_issuerpruefung_schaltet_sich_nicht_selbst_ab():
+    """Zweite Schicht, eigenstaendig geprueft — wie beim Publikum.
+
+    Die Gegenprobe verlangt es: nimmt man den Konstruktor-Zwang UND das
+    unbedingte `verify_iss` heraus, fiel nur der Zwang-Test. Alle Tests oben
+    bauen ihre Settings mit Issuer, dort ist `bool(oauth_issuer)` also ebenfalls
+    True — sie koennen die alte, nachgiebige Fassung gar nicht widerlegen.
+
+    Darum wird der Issuer hier NACH dem Bauen entfernt, am Konstruktor vorbei:
+    genau der Zustand, den die alte Fassung als «dann eben nicht pruefen»
+    gelesen hat.
+
+    Dieser Test hat beim Schreiben etwas aufgedeckt, das die Messung vorher
+    nicht hatte: `verify_iss: True` traegt die Schicht NICHT. Er war zuerst rot,
+    und zwar zu Recht — `_validate_iss(issuer=None)` kehrt in pyjwt 2.14.0 in
+    der ersten Zeile zurueck, das fremde Token kam also durch. Getragen wird die
+    Zusicherung erst vom Riegel in `_decode`, der einen fehlenden
+    Erwartungswert als Ablehnung liest. Neutralisiert man ihn, faellt dieser
+    Test — das Flag rettet ihn nicht.
+    """
+    s = _settings()
+    verifier = JWTTokenVerifier(s)
+    fremd = _token_for(AUDIENCE, s.auth_secret, issuer="https://fremder-tenant.example")
+
+    verifier.settings.oauth_issuer = None
+
+    assert await verifier.verify_token(fremd) is None
+
+
+def test_build_auth_ohne_issuer_meldet_die_variable():
+    """Die Reihenfolge in `_build_auth` — und sie war ungeprueft.
+
+    Die Gegenprobe deckte es auf: ersetzt man `issuer_url=settings.oauth_issuer`
+    wieder durch `... or base`, bleibt die ganze Suite gruen. Der Rueckfall ist
+    unerreichbar, und genau darum ist er weg — aber «unerreichbar» ist selbst
+    eine Zusicherung, und die haengt daran, dass der Verifier VOR dem
+    `AuthSettings` gebaut wird.
+
+    Steht er dahinter, scheitert `_build_auth` an `issuer_url=None` mit einem
+    Pydantic-Fehler, der von Feldnamen des SDK spricht statt von der Variable,
+    die der Betreiber setzen muss. Dieser Test haelt deshalb nicht bloss das
+    Scheitern, sondern die Fehlerklasse und die genannte Variable fest.
+    """
+    ohne_issuer = Settings(
+        auth_enabled=True, auth_secret="x" * 40, oauth_audience=AUDIENCE, oauth_issuer=None
+    )
+
+    with pytest.raises(AuthConfigError, match="MCP_OAUTH_ISSUER"):
+        _build_auth(ohne_issuer)
+
+
+async def test_ein_schraegstrich_am_iss_claim_ist_ein_anderer_issuer():
+    """Der Issuer wird NICHT normalisiert, anders als die Resource-URL.
+
+    `_public_url` schneidet bei `MCP_RESOURCE_URL` einen abschliessenden
+    Schraegstrich ab. Beim Issuer waere dasselbe ein Fehler: RFC 8414/9207
+    vergleichen zeichengleich, und manche IdP stellen `iss` mit Schraegstrich
+    aus. Ein `rstrip` machte deren Tokens ungueltig — dieser Test haelt fest,
+    dass der Vergleich exakt ist, und damit auch, dass das Weglassen der
+    Normalisierung eine Entscheidung und kein Versehen war.
+    """
+    s = _settings()
+    mit_schraegstrich = _token_for(AUDIENCE, s.auth_secret, issuer=ISSUER + "/")
+    assert await JWTTokenVerifier(s).verify_token(mit_schraegstrich) is None
 
 
 # --- SEC-009: `validate_token_resource` ist ausdruecklich entschieden ---
@@ -271,6 +423,19 @@ def test_ein_token_fuer_fremde_resource_scheitert_am_stack():
     """
     settings = _auth_stack_settings()
     fremd = _token_for("https://ganz-anderer-dienst.example", settings.auth_secret)
+
+    assert _initialize_with_bearer(fremd) == 401
+
+
+def test_ein_token_von_fremdem_mandanten_scheitert_am_stack():
+    """Die Issuerpruefung wirkt bis zum Statuscode, nicht nur im Verifier.
+
+    Dasselbe Argument wie beim Publikum eine Ebene hoeher: der Verifier koennte
+    korrekt pruefen und trotzdem nicht im Stack haengen. Das `aud` ist hier
+    richtig — abgelehnt wird genau am `iss`.
+    """
+    settings = _auth_stack_settings()
+    fremd = _token_for(AUDIENCE, settings.auth_secret, issuer="https://fremder-tenant.example")
 
     assert _initialize_with_bearer(fremd) == 401
 
@@ -352,21 +517,28 @@ def test_ein_abschliessender_schraegstrich_wird_abgeschnitten():
     assert document["resource"] == "https://mcp.example.ch"
 
 
-def test_der_issuer_bleibt_der_idp_wenn_gesetzt():
-    """`authorization_servers` nennt den IdP, nicht diesen Server.
+def test_der_server_nennt_immer_den_idp_als_authorization_server():
+    """`authorization_servers` nennt den IdP, nie diesen Server.
 
-    Ohne `MCP_OAUTH_ISSUER` traegt der Server sich selbst ein — sachlich
-    falsch, er stellt keine Tokens aus. Der Test haelt fest, dass ein gesetzter
-    Issuer durchreicht und die Resource-URL davon unberuehrt bleibt; beide
-    Felder kommen aus demselben `AuthSettings` und wurden bisher aus derselben
-    Quelle gespeist.
+    Bis zum 19.9.2026 stand in `_build_auth` `settings.oauth_issuer or base`:
+    ohne Issuer trug der Server sich selbst ein. Das war nicht bloss unsauber,
+    sondern eine tote Kette — `authorization_servers[0]` ist der Wert, den ein
+    SDK-Client als `auth_server_url` uebernimmt, und darunter antwortete dieser
+    Server auf `/.well-known/oauth-authorization-server`,
+    `/.well-known/openid-configuration`, `/authorize`, `/token` und `/register`
+    mit 404.
+
+    Der Rueckfall ist weg, und mit ihm der Zustand: ohne `MCP_OAUTH_ISSUER`
+    entsteht kein Verifier (siehe `test_auth_enabled_without_issuer_raises`).
+    Was dieser Test hier haelt, ist das Durchreichen — beide Felder kommen aus
+    demselben `AuthSettings` und wurden einmal aus derselben Quelle gespeist,
+    also muss geprueft bleiben, dass sie auseinanderlaufen koennen.
     """
-    document, _ = _published(
-        _pinned(resource_url="https://mcp.example.ch", oauth_issuer="https://idp.example.ch")
-    )
+    document, _ = _published(_pinned(resource_url="https://mcp.example.ch"))
 
-    assert document["authorization_servers"] == ["https://idp.example.ch"]
+    assert document["authorization_servers"] == [ISSUER]
     assert document["resource"] == "https://mcp.example.ch"
+    assert document["authorization_servers"] != [document["resource"]]
 
 
 def test_der_server_warnt_wenn_die_resource_url_fehlt():
@@ -381,7 +553,34 @@ def test_der_server_warnt_wenn_die_resource_url_fehlt():
 
     events = {entry["event"] for entry in entries}
     assert "public_resource_url_unset" in events
-    assert "oauth_issuer_unset" in events
+
+
+def test_public_url_warnt_nicht_mehr_ueber_den_issuer():
+    """Die zweite Warnung ist weg, und das ist pruefbar — mit dem richtigen Fall.
+
+    Hier stand zuerst ein `assert "oauth_issuer_unset" not in events` im Test
+    darueber. Die Gegenprobe zeigte, dass es nichts prueft: `_pinned` belegt den
+    Issuer vor, die Warnung koennte dort also gar nicht feuern, und baute man sie
+    wieder ein, blieb die Suite gruen. Ein Test, der die Implementierung nicht
+    widerlegen kann, ist keiner.
+
+    Also der Zustand, in dem sie feuern WUERDE: Settings ohne Issuer, am
+    Verifier vorbei gebaut. Dass `_public_url` dort nur noch die eine Warnung
+    kennt, ist der Beleg — die Zustaendigkeit fuer den Issuer liegt jetzt im
+    Konstruktor, der gar keinen Server ohne ihn entstehen laesst.
+    """
+    ohne_issuer = Settings(
+        auth_enabled=True,
+        auth_secret="x" * 40,
+        oauth_audience=AUDIENCE,
+        host="0.0.0.0",  # noqa: S104 — Container
+        port=8000,
+    )
+
+    with capture_logs() as entries:
+        _public_url(ohne_issuer)
+
+    assert [entry["event"] for entry in entries] == ["public_resource_url_unset"]
 
 
 def test_bei_loopback_warnt_er_nicht():
@@ -391,7 +590,7 @@ def test_bei_loopback_warnt_er_nicht():
     immer feuert — und eine Warnung, die immer kommt, wird ueberlesen.
     """
     with capture_logs() as entries:
-        result = _public_url(_settings(host="127.0.0.1", port=8000, oauth_issuer="https://idp.x"))
+        result = _public_url(_settings(host="127.0.0.1", port=8000))
 
     assert result == "http://127.0.0.1:8000"
     assert [entry["event"] for entry in entries] == []
@@ -422,9 +621,7 @@ def test_ohne_die_variable_bleibt_die_resource_url_leer(monkeypatch):
 def test_die_gesetzte_url_schlaegt_den_bind():
     """`_public_url` bevorzugt die Einstellung und warnt dann nicht."""
     with capture_logs() as entries:
-        result = _public_url(
-            _pinned(resource_url="https://mcp.example.ch", oauth_issuer="https://i.x")
-        )
+        result = _public_url(_pinned(resource_url="https://mcp.example.ch"))
 
     assert result == "https://mcp.example.ch"
     assert [entry["event"] for entry in entries] == []

@@ -131,7 +131,7 @@ Relevante Umgebungsvariablen (siehe [`.env.example`](.env.example)):
 | `MCP_AUTH_SECRET` | — | HS256-Signing-Key (Entwicklung). |
 | `MCP_OAUTH_JWKS_URL` | — | JWKS-URL für RS256-Validierung (Produktion). |
 | `MCP_OAUTH_AUDIENCE` | — | **Pflicht mit Auth.** Resource-Identifier, auf den der IdP Tokens bindet (`aud`). |
-| `MCP_OAUTH_ISSUER` | — | Erwarteter Token-Issuer (optional). |
+| `MCP_OAUTH_ISSUER` | — | **Pflicht mit Auth.** Issuer des IdP, der die Tokens ausstellt (`iss`), zeichengleich verglichen. |
 | `MCP_RESOURCE_URL` | Bind-Adresse | **Öffentliche URL dieses Servers** — der Resource-Identifier nach RFC 9728. Bei Nicht-Loopback-Bind setzen. |
 | `MCP_REQUIRED_SCOPES` | — | Komma-separierte erforderliche Scopes. |
 | `MCP_CORS_ORIGINS` | — | Komma-separierte erlaubte Origins (keine Wildcard in Prod). |
@@ -144,6 +144,25 @@ bindet ein Token an *diesen* Server. Ohne die Variable prüfte der Verifier das
 Publikum gar nicht und nahm jedes korrekt signierte Token desselben Issuers an
 — auch eines, das für einen anderen Dienst ausgestellt wurde (Confused Deputy).
 Der Server startet im Auth-Modus jetzt nicht mehr ohne sie.
+
+**`MCP_OAUTH_ISSUER` ist ebenfalls Pflicht**, aus demselben Grund auf der
+anderen Seite des Tokens. Das `iss`-Claim bindet ein Token an *den* IdP, dem
+dieser Server traut. Das trägt, sobald mehrere Mandanten dieselbe JWKS-URL
+teilen — der Normalfall bei einem gehosteten IdP: die Signatur ist dann für alle
+gültig, und nur `iss` trennt sie. Nachgemessen ohne die Variable, Publikum
+korrekt: ein Token mit `iss: https://fremder-tenant.example` wurde
+**akzeptiert**, und ein Token ganz ohne `iss` ebenfalls. Der Wert wird nach
+RFC 8414/9207 zeichengleich verglichen, abschliessender Schrägstrich
+inbegriffen, und deshalb *nicht* normalisiert — anders als
+`MCP_RESOURCE_URL`, wo ein Schrägstrich am Ende abgeschnitten wird.
+
+Und er ist es, der die Discovery überhaupt erst tragfähig macht.
+`authorization_servers[0]` im RFC-9728-Dokument ist der Wert, den ein SDK-Client
+als seinen Authorization Server übernimmt. Ohne die Variable trug der Server
+*sich selbst* dort ein — und unter dieser Adresse antworten
+`/.well-known/oauth-authorization-server`,
+`/.well-known/openid-configuration`, `/authorize`, `/token` und `/register`
+alle mit 404, denn er ist ein Resource Server und kein Authorization Server.
 
 **`MCP_RESOURCE_URL` ist das, was ein OAuth-Client braucht.** Nach RFC 9728
 publiziert der Server einen Resource-Identifier unter

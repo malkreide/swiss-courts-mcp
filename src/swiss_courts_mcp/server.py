@@ -1299,14 +1299,11 @@ def _public_url(settings: Settings) -> str:
             "RFC-9728-Resource-Identifier — bei 0.0.0.0 eine Adresse, die "
             "kein Client anwaehlen kann.",
         )
-    if not settings.oauth_issuer:
-        log.warning(
-            "oauth_issuer_unset",
-            published=base,
-            hint="Ohne MCP_OAUTH_ISSUER nennt der Server sich selbst als "
-            "Authorization Server. Setze den Issuer des IdP, der die Tokens "
-            "ausstellt.",
-        )
+    # Hier stand bis zum 19.9.2026 eine zweite Warnung `oauth_issuer_unset`:
+    # ohne `MCP_OAUTH_ISSUER` trug der Server sich selbst als Authorization
+    # Server ein. Der Fall existiert nicht mehr — `JWTTokenVerifier.__init__`
+    # laesst keinen Auth-Server ohne Issuer entstehen. Eine Warnung fuer einen
+    # unmoeglichen Zustand waere toter Code, der aussieht wie eine Absicherung.
     return base
 
 
@@ -1316,6 +1313,14 @@ def _build_auth(settings: Settings):
 
     from swiss_courts_mcp.auth import JWTTokenVerifier
 
+    # Der Verifier zuerst: sein Konstruktor ist die Stelle, die eine
+    # unvollständige Auth-Konfiguration ablehnt (Secret oder JWKS, Publikum,
+    # Issuer). Stünde er hinter dem `AuthSettings`, baute der Server erst eine
+    # Auth-Konfiguration auf Werte, die es nicht gibt, und scheiterte eine
+    # Zeile später — `issuer_url=None` fiel dann als Pydantic-Fehler auf statt
+    # als die Meldung, die dem Betreiber die Variable nennt.
+    verifier = JWTTokenVerifier(settings)
+
     # `base` ist nur die Rückfallebene und im Container falsch: ein
     # 0.0.0.0-Bind ergibt `http://0.0.0.0:8000`, und genau diesen Wert
     # publiziert das SDK dann nach RFC 9728 als Resource-Identifier. Der
@@ -1323,12 +1328,16 @@ def _build_auth(settings: Settings):
     # er fehlt und aus dem Bind nicht ableitbar ist.
     base = _public_url(settings)
     auth_settings = AuthSettings(
-        # Ohne `MCP_OAUTH_ISSUER` nennt der Server sich selbst als
-        # Authorization Server. Das ist sachlich falsch — er stellt keine
-        # Tokens aus — und stand bisher zusätzlich auf der Bind-Adresse.
-        # Mindestens die Adresse ist jetzt erreichbar; richtig wird es erst
-        # mit gesetztem `MCP_OAUTH_ISSUER`, worauf `_public_url` hinweist.
-        issuer_url=settings.oauth_issuer or base,
+        # Unbedingt der IdP. Bisher stand hier `settings.oauth_issuer or base`
+        # — der Server nannte also sich selbst als Authorization Server, was
+        # sachlich falsch ist: er stellt keine Tokens aus. Nachgemessen war die
+        # Kette damit tot; `authorization_servers[0]` ist der Wert, den ein
+        # SDK-Client als `auth_server_url` übernimmt, und unter ihm antworteten
+        # `/.well-known/oauth-authorization-server`,
+        # `/.well-known/openid-configuration`, `/authorize`, `/token` und
+        # `/register` alle mit 404. Der Rückfall war keine Milde, sondern ein
+        # Verweis ins Leere.
+        issuer_url=settings.oauth_issuer,
         resource_server_url=base,
         required_scopes=settings.required_scopes or None,
         # Explizit False, nicht ungesetzt. Ungesetzt verhaelt sich heute wie
@@ -1377,7 +1386,7 @@ def _build_auth(settings: Settings):
         # einer nicht anwaehlbaren Adresse.
         validate_token_resource=False,
     )
-    return auth_settings, JWTTokenVerifier(settings)
+    return auth_settings, verifier
 
 
 # SEP-2549, Spec 2026-07-28: die auflistenden Methoden tragen `ttlMs` und

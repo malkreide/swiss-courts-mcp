@@ -13,10 +13,17 @@ Zwei Validierungsmodi:
 * **RS256 via JWKS** — asymmetrisch gegen die JWKS-URL des IdP
   (``MCP_OAUTH_JWKS_URL``), für Produktion.
 
-In beiden Modi ist ``MCP_OAUTH_AUDIENCE`` Pflicht: das ``aud``-Claim bindet das
-Token an *diesen* Server. Fehlte es, prüfte dieser Verifier das Publikum nicht
-und nahm jedes korrekt signierte Token desselben Issuers an — auch eines, das
-für einen ganz anderen Dienst ausgestellt wurde.
+In beiden Modi sind ``MCP_OAUTH_AUDIENCE`` und ``MCP_OAUTH_ISSUER`` Pflicht.
+Beide Claims beantworten dieselbe Frage von zwei Seiten, und fehlte eines,
+schaltete dieser Verifier die zugehörige Prüfung lautlos ab:
+
+* ``aud`` bindet das Token an *diesen* Server. Ohne die Variable kam jedes
+  korrekt signierte Token desselben Issuers durch — auch eines, das für einen
+  ganz anderen Dienst ausgestellt wurde.
+* ``iss`` bindet es an *den* IdP, dem dieser Server traut. Ohne die Variable
+  kam ein Token mit fremdem ``iss`` durch, und eines ganz ohne ``iss``
+  ebenfalls. Das trägt, sobald mehrere Mandanten dieselbe JWKS-URL teilen:
+  die Signatur ist dann für alle gültig, und nur ``iss`` trennt sie.
 
 Nur relevant im HTTP-Modus mit ``MCP_AUTH_ENABLED=true``. Der stdio-Transport
 läuft ohne Auth (lokal = vertrauenswürdig, SEC-006).
@@ -37,6 +44,16 @@ log = get_logger(__name__)
 
 class AuthConfigError(RuntimeError):
     """Auth aktiviert, aber unvollständig konfiguriert."""
+
+
+class MissingVerificationTargetError(jwt.InvalidTokenError):
+    """Der Wert, gegen den geprüft würde, fehlt — dann wird abgelehnt.
+
+    Erbt bewusst von ``jwt.InvalidTokenError``: ``verify_token`` fängt
+    ``jwt.PyJWTError``, das Token wird also mit 401 abgelehnt statt den Prozess
+    mit einem 500 zu quittieren. Der Log-Grund nennt diese Klasse, nicht einen
+    Token-Fehler — das Token ist in Ordnung, die Konfiguration nicht.
+    """
 
 
 class JWTTokenVerifier(TokenVerifier):
@@ -68,27 +85,82 @@ class JWTTokenVerifier(TokenVerifier):
                 "Server bindet. Ohne ihn wird das aud-Claim nicht geprueft, "
                 "und Tokens fuer fremde Dienste desselben Issuers gelten hier."
             )
+        if not settings.oauth_issuer:
+            # Dieselbe Klasse wie oben, andere Seite des Tokens: ohne Issuer
+            # stand `verify_iss` auf False, und `_decode` liess alles durch.
+            # Nachgemessen am 19.9.2026, HS256, Publikum korrekt gesetzt:
+            #
+            #   ohne die Variable   iss fremder Tenant  -> AKZEPTIERT
+            #                       iss fehlt ganz      -> AKZEPTIERT
+            #   mit der Variable    iss fremder Tenant  -> InvalidIssuerError
+            #                       iss fehlt ganz      -> MissingRequiredClaimError
+            #                       iss == Issuer       -> AKZEPTIERT (Kontrolle)
+            #
+            # Das `require` unten braucht darum kein "iss": pyjwt fordert das
+            # Claim bei gesetztem `issuer` von sich aus ein — gemessen als
+            # `MissingRequiredClaimError`, nicht angenommen. Ein zweiter Pin
+            # derselben Tatsache waere eine Drift-Quelle; ein Test haelt sie.
+            raise AuthConfigError(
+                "MCP_AUTH_ENABLED=true erfordert MCP_OAUTH_ISSUER — den "
+                "Issuer des IdP, der die Tokens ausstellt. Ohne ihn wird das "
+                "iss-Claim nicht geprueft: Tokens fremder Mandanten desselben "
+                "JWKS gelten hier, und ein Token ganz ohne iss ebenfalls. Der "
+                "Wert muss dem iss-Claim zeichengleich entsprechen, "
+                "abschliessender Schraegstrich inbegriffen (RFC 8414/9207)."
+            )
         if settings.oauth_jwks_url:
             self._jwks_client = jwt.PyJWKClient(settings.oauth_jwks_url)
 
     def _decode(self, token: str) -> dict:
-        # `verify_aud` steht fest auf True: der Konstruktor laesst keinen
-        # Verifier ohne Publikum entstehen. Vorher hing das Flag an
-        # `bool(oauth_audience)` — die Pruefung schaltete sich also selbst ab,
-        # sobald die Variable fehlte, und zwar lautlos.
+        # Der Vorbehalt, der hier stand — `_build_auth` setze ersatzweise die
+        # eigene Basis-URL als `issuer_url` ein, ein erzwungenes `verify_iss`
+        # pruefe also gegen einen Wert, den kein IdP ausgestellt hat — ist mit
+        # dem Issuerzwang weg: `issuer_url` ist jetzt unbedingt `oauth_issuer`,
+        # und die Ersatzebene existiert nicht mehr.
         #
-        # `verify_iss` bleibt bedingt: `oauth_issuer` ist weiterhin optional,
-        # und `_build_auth` setzt als `issuer_url` ersatzweise die eigene
-        # Basis-URL ein. Ein hier erzwungenes True pruefte dann gegen einen
-        # Wert, den nie ein IdP ausgestellt hat. Das ist eine eigene Baustelle
-        # und wird hier nicht mitbehauptet.
+        # `oauth_issuer` wird NICHT normalisiert. Anders als bei
+        # `MCP_RESOURCE_URL`, wo `_public_url` einen abschliessenden
+        # Schraegstrich abschneidet, ist er hier bedeutungstragend: gemessen
+        # ergibt `iss` mit Schraegstrich gegen einen Issuer ohne ihn
+        # `InvalidIssuerError`. Manche IdP stellen `iss` mit Schraegstrich aus;
+        # ein `rstrip` hier machte deren Tokens ungueltig.
+
+        # Fail-closed, und dieser Riegel ist nicht Zierde: die `verify_*`-Flags
+        # allein tragen die zweite Schicht NICHT. Nachgemessen und in der
+        # pyjwt-Quelle (2.14.0, `api_jwt.py`) nachgelesen:
+        #
+        #   `_validate_iss(issuer=None)` kehrt in der ersten Zeile zurueck —
+        #   `verify_iss: True` prueft dann gar nichts, und ein Token mit
+        #   fremdem `iss` wird AKZEPTIERT.
+        #
+        #   `_validate_aud(audience=None)` wirft nur, wenn das Token ein `aud`
+        #   FUEHRT. Ein Token ganz ohne `aud` wird AKZEPTIERT.
+        #
+        # Der Konstruktor laesst diesen Zustand nicht entstehen, aber genau
+        # darauf hatte sich die Publikumsschicht verlassen: ein Verifier, dem
+        # jemand die Settings nachtraeglich aendert, prueft sonst lautlos nichts
+        # mehr. Ein fehlender Erwartungswert ist deshalb eine Ablehnung.
+        audience = self.settings.oauth_audience
+        issuer = self.settings.oauth_issuer
+        if not audience or not issuer:
+            fehlend = [
+                name
+                for name, wert in (("MCP_OAUTH_AUDIENCE", audience), ("MCP_OAUTH_ISSUER", issuer))
+                if not wert
+            ]
+            raise MissingVerificationTargetError(f"Erwartungswert fehlt: {', '.join(fehlend)}")
+
+        # `verify_aud`/`verify_iss` stehen fest auf True; der Konstruktor laesst
+        # keinen Verifier ohne Publikum und ohne Issuer entstehen. Vorher hingen
+        # die Flags an `bool(...)` der jeweiligen Einstellung — die Pruefungen
+        # schalteten sich also selbst ab, sobald die Variable fehlte, lautlos.
         common = {
-            "audience": self.settings.oauth_audience,
-            "issuer": self.settings.oauth_issuer,
+            "audience": audience,
+            "issuer": issuer,
             "options": {
                 "require": ["exp", "sub"],
                 "verify_aud": True,
-                "verify_iss": bool(self.settings.oauth_issuer),
+                "verify_iss": True,
             },
         }
         if self._jwks_client is not None:

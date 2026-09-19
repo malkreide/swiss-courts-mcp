@@ -131,7 +131,7 @@ Relevant environment variables (see [`.env.example`](.env.example)):
 | `MCP_AUTH_SECRET` | — | HS256 signing key (dev). |
 | `MCP_OAUTH_JWKS_URL` | — | JWKS URL for RS256 validation (production). |
 | `MCP_OAUTH_AUDIENCE` | — | **Required with auth.** Resource identifier the IdP binds tokens to (`aud`). |
-| `MCP_OAUTH_ISSUER` | — | Expected token issuer (optional). |
+| `MCP_OAUTH_ISSUER` | — | **Required with auth.** Issuer of the IdP that mints the tokens (`iss`), compared character for character. |
 | `MCP_RESOURCE_URL` | bind address | **Public URL of this server** — the RFC 9728 resource identifier. Set it on any non-loopback bind. |
 | `MCP_REQUIRED_SCOPES` | — | Comma-separated required scopes. |
 | `MCP_CORS_ORIGINS` | — | Comma-separated allowed origins (no wildcard in prod). |
@@ -144,6 +144,23 @@ binds a token to *this* server. Without it the verifier did not check the
 audience at all and accepted any correctly signed token from the same issuer —
 including one minted for a different service (confused deputy). The server now
 refuses to start in auth mode without it.
+
+**`MCP_OAUTH_ISSUER` is mandatory too, for the same reason on the other side of
+the token.** The `iss` claim binds a token to *the* IdP this server trusts. This
+matters as soon as several tenants share one JWKS URL — the normal case with a
+hosted IdP: the signature is then valid for all of them, and only `iss`
+separates them. Measured with the variable unset, audience correct: a token with
+`iss: https://another-tenant.example` was **accepted**, and so was a token with
+no `iss` at all. The value is compared literally per RFC 8414/9207, trailing
+slash included, and is therefore *not* normalised — unlike `MCP_RESOURCE_URL`,
+where a trailing slash is trimmed.
+
+It is also what makes discovery work. `authorization_servers[0]` in the RFC 9728
+document is the value an SDK client adopts as its authorization server. Without
+the variable the server named *itself* there — and under that address
+`/.well-known/oauth-authorization-server`,
+`/.well-known/openid-configuration`, `/authorize`, `/token` and `/register` all
+answer 404, because this is a resource server, not an authorization server.
 
 **`MCP_RESOURCE_URL` is what an OAuth client needs.** Per RFC 9728 the server
 publishes a resource identifier at `/.well-known/oauth-protected-resource` and

@@ -277,7 +277,8 @@ Vermutung über die Reihenfolge.
 Praktisch heisst das: **Eine verschwundene Limit-Meldung ist keine Entwarnung.**
 Sie kann bedeuten, dass das Kontingent wieder da ist — und dass jetzt etwas
 anderes den Review verhindert. Belegt ist eine Prüfung erst durch ein
-Review-Objekt **oder** eine Befundlos-Meldung. Wer nur das Objekt gelten lässt,
+Review-Objekt, eine Befundlos-Meldung **oder** die Summary-Tabelle mit
+`✅ Completed` (die fünfte Form, gleich unten). Wer nur das Objekt gelten lässt,
 zählt jeden befundlosen Review als ungeprüft — und baut sich denselben Fehlalarm
 ein, den dieser Abschnitt verhindern soll, nur in die andere Richtung.
 
@@ -301,6 +302,73 @@ bekannten Schubladen zu zwingen: Dieser Abschnitt musste schon einmal von drei
 auf vier Gründe wachsen, und die 👍-Reaktion stand hier zwei Fassungen lang als
 Tatsache.
 
+### Die fünfte Form: eine Summary-Tabelle, die sich selbst überschreibt
+
+Genau das ist am 19.9.2026 eingetreten. In `swiss-courts-mcp` schrieb Codex auf
+PR #73 und #74 einen Issue-Kommentar, den die vier Schubladen oben nicht
+kennen — weder Befundlos-Meldung noch Ausfallmeldung, sondern eine Tabelle:
+
+```
+## Codex Review Summary
+
+| Review | Status | Commit | Review trigger |
+| --- | --- | --- | --- |
+| 📝 **Code Review** | ✅ **Completed** <relative-time …> | `bc05ec7` | Draft marked ready |
+```
+
+Das ist keine fünfte Ursache fürs Schweigen, sondern eine fünfte **Belegform**,
+und eine bessere als die Befundlos-Meldung: sie nennt den geprüften Commit und
+den Abschlusszeitpunkt. Deshalb steht sie jetzt oben in der Belegliste.
+
+**Der Kommentar wird an derselben Stelle überschrieben, nicht ergänzt.** Das ist
+die Falle, und sie zeigt sich nur im Vergleich beider PRs — an einem allein wäre
+sie unsichtbar geblieben:
+
+| | #73 | #74 |
+|---|---|---|
+| ready for review | 06:36:16 | 06:56:15 |
+| Merge | 06:36:19 | 06:56:19 |
+| Kommentar `created_at` | 06:36:29 | 06:57:20 |
+| Status zu diesem Zeitpunkt | 🔄 Running since 06:36:24 | ✅ Completed 06:57:18 |
+| `updated_at` | 06:37:29 | 06:57:20 |
+| Status zu *diesem* Zeitpunkt | ✅ Completed 06:37:28 | unverändert |
+
+Auf #73 entstand der Kommentar als «Running» und wurde eine Minute später zu
+«Completed» editiert — dieselbe `id` (`5739967817`). Auf #74 stand schon beim
+Anlegen «Completed», `created_at` und `updated_at` sind identisch. **`created_at`
+sagt damit nichts über den Zustand des Reviews.** Wer den Kommentar einmal liest
+und zwischenspeichert, sieht auf #73 für immer «Running»; wer ihn gar nicht
+erneut abruft, hält einen abgeschlossenen Review für laufend. Den Text jedes Mal
+frisch lesen, und `updated_at` als Zeitpunkt der letzten Statusänderung nehmen.
+
+Was diese beiden Läufe **nicht** hergeben:
+
+- **Wie ein Befund in dieser Form aussieht.** Beide Läufe endeten ohne Befund:
+  `get_reviews` leer, kein «Didn't find any major issues»-Kommentar, nur die
+  Tabelle. Ob ein Befund als Review-Objekt, als zusätzliche Tabellenzeile oder
+  als beides erscheint, ist **ungemessen**. Der erste Lauf mit Befund unter
+  dieser Oberfläche gehört hier nachgetragen.
+- **Dass «Completed» ohne Befund-Kommentar «kein Befund» beweist.** Belegt ist
+  nur: es wurde auf diesem Commit geprüft, und es wurde in keiner der bekannten
+  Formen ein Befund gepostet. Das Fehlen der Befundlos-Meldung, die die erste
+  Schublade als Marker führt, bleibt unerklärt.
+
+Zwei Nebenbefunde aus denselben Läufen:
+
+- **Die 👍-Reaktion blieb erneut aus** — `reactions.total_count: 0` auf beiden
+  Kommentaren, während der Infokasten sie weiter behauptet. Damit steht die
+  Behauptung des Kastens gegen acht Beobachtungen (sechs am 23.8., zwei hier).
+- **Ein Merge bricht den Lauf nicht ab.** Beide PRs wurden drei bzw. vier
+  Sekunden nach «ready for review» gemergt, und beide Reviews liefen danach zu
+  Ende (#73: Merge 06:36:19, fertig 06:37:28; #74: Merge 06:56:19, fertig
+  06:57:18). Der Review ist also nicht verloren — er kommt bloss zu spät, um
+  noch etwas zu verhindern, und ein Befund stünde dann schon in `master`.
+
+  Daraus fällt auch eine Zahl für die Wartezeit, die der Abschnitt «zu schnell
+  mergen» weiter unten bisher nicht hatte: **ready bis Completed dauerte 72 bzw.
+  63 Sekunden.** Zwei Punkte, kein Mittelwert — aber sie zeigen die
+  Grössenordnung: wer eine Minute wartet, hat den Prüfer.
+
 Und ein befundloser Lauf ist kein Freispruch. Am 23.8. lief derselbe Text durch
 42 Reviews: 36 meldeten denselben P2-Befund, 6 die Befundlos-Meldung — gleiche
 Eingabe, gegenteiliges Urteil, alles in denselben neun Minuten. Ein sauberer
@@ -318,9 +386,15 @@ Findet nur, wo er *kommentiert* hat. Repos ohne PR-Aktivität tauchen nicht auf
 
 Zweiter Weg, den Prüfer zu verlieren, ganz ohne Kontingentproblem: zu schnell
 mergen. Am 21./22.8. lagen zwischen «ready for review» und Merge mehrfach drei
-bis fünf Sekunden. Codex wird beim Umschalten von Draft auf ready ausgelöst und
-braucht danach Zeit; wer sofort mergt, hat das Häkchen gesetzt und den Review
-nicht abgewartet.
+bis fünf Sekunden, am 19.9. in `swiss-courts-mcp` noch zweimal dasselbe (#73:
+drei Sekunden, #74: vier). Codex wird beim Umschalten von Draft auf ready
+ausgelöst und braucht danach Zeit; wer sofort mergt, hat das Häkchen gesetzt und
+den Review nicht abgewartet.
+
+Wie viel Zeit, steht jetzt oben bei der fünften Form: **72 bzw. 63 Sekunden**
+von «ready» bis «Completed». Der Lauf wird dabei nicht abgebrochen — er endet
+nur, wenn niemand mehr etwas davon hat, und ein Befund stünde dann schon im
+Default-Branch.
 
 Das Kontingent hängt am Konto, nicht am Repo, und Code-Reviews haben einen
 eigenen Topf — nur GitHub-getriggerte Reviews zählen hinein. ChatGPT-Pläne

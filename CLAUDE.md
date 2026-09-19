@@ -244,6 +244,21 @@ etwas geändert hätte. Den Fall gezielt wählen und beide Zweige fahren.
 PR ohne jeden Check ist selten ein Repo ohne CI, meistens ein
 Merge-Konflikt: GitHub berechnet dafür keinen Merge-Commit und startet nichts.
 
+**Den CI-Stand über `get_check_runs` lesen, nicht über `get_status`.** Die
+Status-Abfrage bedient die alte Commit-Status-API, und dieses Repo benutzt
+ausschliesslich Check-Runs. Sie antwortet deshalb *immer* mit
+`state: "pending"` bei `total_count: 0` — am 19.9.2026 gemessen auf drei PRs,
+darunter #80 und #82, die beide mit vier grünen Check-Runs gemergt waren:
+
+```
+{"state": "pending", "sha": "…", "total_count": 0, "statuses": []}
+```
+
+Die leere Menge trägt hier also das Wort «pending», und wer nur das Feld liest,
+hält eine grüne CI für laufend und wartet auf etwas, das schon da ist. Dieselbe
+Klasse wie der 403 weiter unten: ein Nichts, verpackt als Auskunft. Das `0`
+daneben ist der Hinweis — kein Eintrag heisst keine Messung.
+
 Ein Codex-Review auf einem PR wird beantwortet oder behoben, nie ignoriert.
 
 ## Wenn Codex gar nicht erst hinsieht

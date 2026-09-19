@@ -358,16 +358,37 @@ Zwei Nebenbefunde aus denselben Läufen:
 - **Die 👍-Reaktion blieb erneut aus** — `reactions.total_count: 0` auf beiden
   Kommentaren, während der Infokasten sie weiter behauptet. Damit steht die
   Behauptung des Kastens gegen acht Beobachtungen (sechs am 23.8., zwei hier).
-- **Ein Merge bricht den Lauf nicht ab.** Beide PRs wurden drei bzw. vier
-  Sekunden nach «ready for review» gemergt, und beide Reviews liefen danach zu
-  Ende (#73: Merge 06:36:19, fertig 06:37:28; #74: Merge 06:56:19, fertig
-  06:57:18). Der Review ist also nicht verloren — er kommt bloss zu spät, um
-  noch etwas zu verhindern, und ein Befund stünde dann schon in `master`.
+- **Ein Merge bricht den Lauf nicht ab**, auch nicht mitten im Lauf. Drei PRs
+  am 19.9., alle vor dem Ende des Reviews gemergt, alle drei liefen zu Ende:
+  #73 (Merge 06:36:19, drei Sekunden nach «ready», fertig 06:37:28), #74 (Merge
+  06:56:19, vier Sekunden nach «ready», fertig 06:57:18) und #75 — dort lag der
+  Merge um 07:02:55 **46 Sekunden in den laufenden Review hinein** und stoppte
+  ihn nicht (fertig 07:05:07). Der Review ist also nicht verloren; er kommt
+  bloss zu spät, um noch etwas zu verhindern, und ein Befund stünde dann schon
+  in `master`.
 
-  Daraus fällt auch eine Zahl für die Wartezeit, die der Abschnitt «zu schnell
-  mergen» weiter unten bisher nicht hatte: **ready bis Completed dauerte 72 bzw.
-  63 Sekunden.** Zwei Punkte, kein Mittelwert — aber sie zeigen die
-  Grössenordnung: wer eine Minute wartet, hat den Prüfer.
+- **Die Dauer streut, und zwar erheblich.** Von «ready» bis `Completed`: **72,
+  63 und 178 Sekunden.** Der längste Lauf brauchte fast das Dreifache des
+  kürzesten, bei drei Diffs ähnlicher Grösse im selben Repo, innerhalb von
+  26 Minuten. Eine Wartezeit lässt sich daraus nicht ableiten — und ein früherer
+  Stand dieses Abschnitts tat es doch: dort stand «wer eine Minute wartet, hat
+  den Prüfer», gestützt auf die ersten zwei Punkte. Der dritte widerlegt es.
+
+  **Also nicht auf eine Zeitspanne warten, sondern auf den Beleg:** die
+  Summary-Tabelle auf `✅ Completed`, mit dem Commit des Heads.
+
+- **Und ein «Running», das lange steht, ist kein Abbruch.** Um 07:05:02 stand
+  #75 seit 2 min 53 s auf `🔄 Running`, `updated_at` unverändert auf 07:02:10 —
+  bei 63 und 72 Sekunden Erfahrung sah das nach «der Merge hat den Lauf
+  erledigt» aus, und genau dieser Satz war schon für diese Datei getippt.
+  **Fünf Sekunden später** stand `✅ Completed 07:05:07` da, `updated_at`
+  07:05:08.
+
+  Der Fehlschluss wäre nicht aus Unachtsamkeit entstanden, sondern aus einer
+  Erwartung, die auf zwei Beobachtungen ruhte. Dieselbe Klasse wie die
+  25-Stunden-Sperre weiter oben: der Abstand zweier Beobachtungen ist keine
+  Eigenschaft der Sache. Wer aus einem stehenden Status eine Ursache macht,
+  erfindet sie — nachgemessen wird, bis der Status sich ändert.
 
 Und ein befundloser Lauf ist kein Freispruch. Am 23.8. lief derselbe Text durch
 42 Reviews: 36 meldeten denselben P2-Befund, 6 die Befundlos-Meldung — gleiche
@@ -391,10 +412,22 @@ drei Sekunden, #74: vier). Codex wird beim Umschalten von Draft auf ready
 ausgelöst und braucht danach Zeit; wer sofort mergt, hat das Häkchen gesetzt und
 den Review nicht abgewartet.
 
-Wie viel Zeit, steht jetzt oben bei der fünften Form: **72 bzw. 63 Sekunden**
-von «ready» bis «Completed». Der Lauf wird dabei nicht abgebrochen — er endet
+**Der lehrreichste Fall ist der dritte, und er sieht gar nicht nach Eile aus.**
+PR #75 wurde am 19.9. **52 Sekunden** nach «ready for review» gemergt — mehr als
+das Zehnfache der drei bzw. vier Sekunden, eine Pause, die wie bewusstes
+Abwarten aussieht. Sie reichte trotzdem nicht: dieser Review brauchte 178
+Sekunden, und der Merge lag 46 Sekunden nach seinem Start.
+
+Wie lange es dauert, steht oben bei der fünften Form, und die Antwort ist
+unbrauchbar als Frist: **72, 63 und 178 Sekunden** bei drei ähnlichen Diffs
+desselben Repos in 26 Minuten. Der Lauf wird dabei nicht abgebrochen — er endet
 nur, wenn niemand mehr etwas davon hat, und ein Befund stünde dann schon im
 Default-Branch.
+
+Deshalb ist die Regel nicht «kurz warten», sondern **auf den Beleg warten**: die
+Summary-Tabelle auf `✅ Completed` mit dem Commit des Heads. Wer Sekunden zählt,
+wettet gegen eine Streuung, die niemand gemessen hat — und hat am Ende wieder
+ein Häkchen und keinen Review.
 
 Das Kontingent hängt am Konto, nicht am Repo, und Code-Reviews haben einen
 eigenen Topf — nur GitHub-getriggerte Reviews zählen hinein. ChatGPT-Pläne

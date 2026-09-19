@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-19
+
+Minor, nicht Patch: `MCP_OAUTH_AUDIENCE` und `MCP_OAUTH_ISSUER` sind jetzt
+Pflicht, sobald `MCP_AUTH_ENABLED=true` ist — ein HTTP-Deployment ohne sie
+startet nicht mehr. Das ist eine brechende Änderung und beabsichtigt: der
+Server lief bisher mit zwei Prüfungen, die es nicht gab. Vor 1.0 trägt die
+Minor-Stelle solche Brüche.
+
+
 ### Sicherheit
 
 - **Auth ohne Issuerbindung nahm Tokens fremder Mandanten an (SEC-009).**
@@ -183,6 +192,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dem anderen Pfad passiert. Dieselbe Klasse wie `lotId` in
   `swiss-procurement-mcp`: eine deterministische Absage auf dem einen Weg ist
   keine Auskunft über den anderen.
+- **Browser-Clients scheiterten am Preflight.** Spec `2026-07-28` routet eine
+  Streamable-HTTP-Anfrage über `Mcp-Method`, `Mcp-Name` und
+  `Mcp-Protocol-Version`; die CORS-Freigabeliste nannte keinen davon, dafür mit
+  `Mcp-Session-Id` den Session-Header, der für sich genommen keine Anfrage
+  routet. Ein Browser darf einen nicht safelisteten Header nicht senden, wenn
+  der Server ihn nicht nennt: die Anfrage starb vor dem ersten MCP-Byte,
+  während stdio und Python weiterliefen. Deshalb war nichts rot.
+
+
 
 ### Hinzugefügt
 
@@ -217,16 +235,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   die URL stand an zwei Orten ohne Verbindung. Sie tragen jetzt beide in den
   Draht (Stempel) und in die Registry (Manifest), also hält ein Test sie
   zusammen.
-
-- **Browser-Clients scheiterten am Preflight.** Spec `2026-07-28` routet eine
-  Streamable-HTTP-Anfrage über `Mcp-Method`, `Mcp-Name` und
-  `Mcp-Protocol-Version`; die CORS-Freigabeliste nannte keinen davon, dafür mit
-  `Mcp-Session-Id` den Session-Header, der für sich genommen keine Anfrage
-  routet. Ein Browser darf einen nicht safelisteten Header nicht senden, wenn
-  der Server ihn nicht nennt: die Anfrage starb vor dem ersten MCP-Byte,
-  während stdio und Python weiterliefen. Deshalb war nichts rot.
-
-### Hinzugefügt
 
 - **`build_http_app(settings)`**, herausgezogen aus `_run_http`, damit die
   CORS-Schicht prüfbar ist. Auth-Konfiguration, `transport_security` und

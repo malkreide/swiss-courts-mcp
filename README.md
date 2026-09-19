@@ -154,12 +154,45 @@ SWISS_COURTS_FORCE_DUMP=1 python -m swiss_courts_mcp  # then issue one search
 
 ---
 
-## MCP Protocol Version
+## MCP Protocol Versions
 
-This server pins MCP protocol version **`2025-11-25`** (constant
-`PROTOCOL_VERSION` in `server.py`). A regression test detects drift against the
-installed SDK so a protocol bump is a conscious change (version + CHANGELOG +
-this section). SDK updates land monthly via Dependabot.
+The server serves **two protocol eras** over the same endpoint; the client's
+first request decides which one it gets:
+
+| Era | Revision | Constant in `server.py` | Handshake |
+|-----|----------|-------------------------|-----------|
+| Legacy | `2025-11-25` | `HANDSHAKE_PROTOCOL_VERSION` | `initialize`, session ID |
+| Modern | `2026-07-28` | `MODERN_PROTOCOL_VERSION` | none — per-request `_meta` envelope |
+
+Both revisions are pinned and both have a drift guard against the installed SDK,
+so a protocol bump stays a conscious change (constant + CHANGELOG + this
+section). SDK updates land monthly via Dependabot.
+
+**Spec `2026-07-28` is the era the SDK's own client picks.** `mcp.Client` probes
+`server/discover` and only falls back to the handshake if that is refused; against
+this server it does not fall back. Measured through the assembled ASGI stack in
+`tests/test_modern_era.py`, not inferred from constant names.
+
+What differs in the modern era:
+
+- **No `initialize`, no session ID.** Every POST is self-contained and carries
+  `params._meta` with the protocol version and the client capabilities, plus the
+  routing headers `MCP-Protocol-Version`, `Mcp-Method` and (for `tools/call`,
+  `prompts/get`, `resources/read`) `Mcp-Name`.
+- **`server/discover`** replaces the handshake for capability discovery, and
+  `subscriptions/listen` replaces the change notifications.
+- **`ping`, `logging/setLevel` and the `resources/subscribe` pair are gone.** In
+  this era the server answers them with `-32601`; in the legacy era they remain.
+- **`ttlMs` / `cacheScope`** ride on the listing methods (SEP-2549) — see
+  `CACHE_HINTS`.
+- **`serverInfo` is stamped into the `_meta` of every response**, because there
+  is no handshake to carry it once. It names the build version, the display
+  title and the project URL; the purpose text stays in `instructions`, which
+  travels once with `server/discover`.
+
+An `initialize` asking for `2026-07-28` still gets `2025-11-25` back: the
+handshake is not the way into the modern era, and that answer says nothing about
+whether the server speaks it.
 
 ## Project Phase
 

@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Behoben
 
+- **Der Server sagte nicht, welchen Build er ist.** `MCPServer(version=...)`
+  defaultet auf den Leerstring, und `create_mcp` übergab nichts: `serverInfo`
+  ging mit `"version": ""` hinaus. In der Handshake-Ära reiste diese Auskunft
+  einmal im `initialize`-Resultat; Spec `2026-07-28` hat den Handshake
+  abgeschafft und stempelt `serverInfo` in das `_meta` **jeder** Antwort — der
+  Stempel ist dort die einzige Stelle, an der ein Client den Build erfährt, und
+  er war leer. Jetzt trägt er `version` aus den Paket-Metadaten, `title`
+  (Anzeigename) und `websiteUrl` aus `[project.urls] Homepage`. Kein neues
+  Literal: beides kommt aus `pyproject.toml`, damit es dieselbe Quelle hat wie
+  `__version__`.
+
+  Absichtlich **ohne** `description`: der Stempel hängt an jeder Antwort dieser
+  Ära, und die Zweckbeschreibung steht in `instructions`, die einmalig mit
+  `server/discover` reist.
+
+- **Die README beschrieb die falsche Ära.** «Der Server pinnt die
+  MCP-Protocol-Version `2025-11-25`» stimmte für den Legacy-Handshake und war
+  die einzige Aussage zum Thema. Nachgemessen ist `2026-07-28` aber die Ära, in
+  der der SDK-eigene Client tatsächlich landet: `mcp.Client` probt
+  `server/discover` und fällt gegen diesen Server nicht auf den Handshake
+  zurück. Der einzige Befund, auf dem die alte Aussage ruhte — ein `initialize`
+  mit `2026-07-28` bekommt `2025-11-25` zurück —, sagt nichts darüber, was auf
+  dem anderen Pfad passiert. Dieselbe Klasse wie `lotId` in
+  `swiss-procurement-mcp`: eine deterministische Absage auf dem einen Weg ist
+  keine Auskunft über den anderen.
+
+### Hinzugefügt
+
+- **`MODERN_PROTOCOL_VERSION` (`2026-07-28`) neben
+  `HANDSHAKE_PROTOCOL_VERSION` (`2025-11-25`)**, beide gepinnt, beide mit
+  Drift-Guard gegen die installierte SDK-Version (ARCH-012). Die frühere
+  einzelne `PROTOCOL_VERSION` konnte nur eine der zwei Ären benennen, die
+  `mcp` 2.x über denselben Server bedient — und benannte die, in der die
+  Clients gerade nicht sprechen. Die Modern-Revision stand bis hier nur in
+  einem Test, der sie *beobachtete*: nichts im Server-Code nannte sie, also
+  konnte ein SDK-Bump auch auf nichts zeigen.
+
+- **`tests/test_modern_era.py`** (23 Tests): die Modern-Ära am Draht, durch den
+  zusammengebauten ASGI-Stack. Gemessen wird, dass `server/discover`,
+  `tools/list`, `tools/call` und `prompts/get` mit Per-Request-Envelope
+  antworten; dass der `serverInfo`-Stempel Version, Anzeigename und URL trägt
+  und keine Zweckbeschreibung; dass `ttlMs`/`cacheScope` auch über HTTP
+  ankommen; dass `initialize`, `ping`, `logging/setLevel` und das
+  `resources/subscribe`-Paar in dieser Ära mit `-32601` antworten; und dass der
+  DNS-Rebinding-Schutz (SEC-005) auf dem neuen Pfad ebenso greift — mit
+  Positivkontrolle für den erlaubten Host und Gegenprobe an
+  `build_transport_security`.
+
+  Eine eigene Zusicherung gilt der Falle: **der Header wählt die Ära, nicht der
+  Envelope.** Fehlt `MCP-Protocol-Version` oder nennt er eine
+  Handshake-Revision, landet die Anfrage im Legacy-Transport und antwortet
+  «Missing session ID» — eine Meldung, die den Envelope im Körper nicht
+  erwähnt und aus der schon einmal der falsche Schluss gezogen wurde.
+
+- **`server.json → websiteUrl` gegen `[project.urls] Homepage` geprüft.**
+  `scripts/check_version_sync.py` hält nur die Versions-Wiederholungen nach;
+  die URL stand an zwei Orten ohne Verbindung. Sie tragen jetzt beide in den
+  Draht (Stempel) und in die Registry (Manifest), also hält ein Test sie
+  zusammen.
+
 - **Browser-Clients scheiterten am Preflight.** Spec `2026-07-28` routet eine
   Streamable-HTTP-Anfrage über `Mcp-Method`, `Mcp-Name` und
   `Mcp-Protocol-Version`; die CORS-Freigabeliste nannte keinen davon, dafür mit
@@ -29,9 +89,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   setzt sonst «sofort veraltet, nie geteilt». `prompts/get` bleibt ohne Hinweis:
   das wäre eine Zusicherung über den Inhalt statt über das Verzeichnis.
   `resources/list` fehlt, weil dieser Server keine Ressourcen registriert.
-
-
-Noch nichts seit 0.4.0.
 
 - **`Mcp-Session-Id` ist weiterhin freigegeben — und das steht jetzt in einem
   Test statt in einem Satz.** Der Docstring von `tests/test_cors.py` nannte den

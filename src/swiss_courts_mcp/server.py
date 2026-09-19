@@ -11,7 +11,9 @@ Lizenz: Freie Nutzung (kein API-Key nötig)
 Synergie mit fedlex-mcp: Gesetze (SR) + Rechtsprechung = vollständige Rechtsrecherche.
 
 Transport: Dual — stdio (lokal, ohne Auth) und streamable-http (Cloud, mit Auth).
-MCP-Protokoll: siehe `PROTOCOL_VERSION` (von der MCPServer-SDK-Version bestimmt).
+MCP-Protokoll: zwei Ären über denselben Server — Legacy-Handshake bis
+`HANDSHAKE_PROTOCOL_VERSION`, Per-Request-Envelope auf
+`MODERN_PROTOCOL_VERSION`. Die erste Anfrage des Clients entscheidet.
 Phase: 1 (read-only) — siehe ROADMAP.md.
 """
 
@@ -30,7 +32,12 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, ConfigDict, Field
 
-from swiss_courts_mcp import api_client, fallback
+from swiss_courts_mcp import (
+    __homepage__,
+    __version__,
+    api_client,
+    fallback,
+)
 from swiss_courts_mcp.config import Settings
 from swiss_courts_mcp.logging_config import configure_logging, get_logger
 from swiss_courts_mcp.models import (
@@ -56,10 +63,34 @@ log = get_logger(__name__)
 MAX_RESULTS_DEFAULT = 20
 MAX_RESULTS_LIMIT = 50
 
-# Bewusst gepinnte, getestete MCP-Protocol-Version (ARCH-012). Kein "latest":
-# ein SDK-Bump muss bewusst nachgezogen werden (Wert + CHANGELOG + README).
-# tests/test_protocol.py erkennt Drift gegen die installierte SDK-Version.
-PROTOCOL_VERSION = "2025-11-25"
+# Bewusst gepinnte, getestete MCP-Protocol-Revisionen (ARCH-012). Kein
+# "latest": ein SDK-Bump muss bewusst nachgezogen werden (Wert + CHANGELOG +
+# README). `tests/test_protocol.py` erkennt Drift gegen die installierte
+# SDK-Version, `tests/test_modern_era.py` misst die Modern-Ära am Draht nach.
+#
+# ZWEI Konstanten, nicht eine: `mcp` 2.x bedient über denselben Server zwei
+# Protokoll-Ären, und die erste Anfrage des Clients entscheidet, welche.
+# Eine einzelne `PROTOCOL_VERSION` konnte nur eine davon benennen — und
+# benannte die, die der SDK-eigene Client gerade NICHT wählt: `mcp.Client`
+# probt `server/discover` und landet gegen diesen Server auf 2026-07-28.
+HANDSHAKE_PROTOCOL_VERSION = "2025-11-25"
+"""Deckel der Legacy-Ära: `initialize`-Handshake, Session-ID, `ping`.
+
+Ein Client, der über den Handshake eine neuere Revision anfragt, bekommt
+diesen Wert als Gegenangebot zurück (nachgemessen in `tests/test_protocol.py`).
+"""
+
+MODERN_PROTOCOL_VERSION = "2026-07-28"
+"""Revision der Modern-Ära: Per-Request-Envelope statt Handshake.
+
+Kein `initialize`, keine Session-ID, dafür `server/discover`,
+`subscriptions/listen` und `ttlMs`/`cacheScope` auf den auflistenden Methoden.
+`ping`, `logging/setLevel` und das `resources/subscribe`-Paar gibt es hier
+nicht mehr — in dieser Ära antwortet der Server darauf mit -32601.
+"""
+
+PROTOCOL_VERSIONS = (HANDSHAKE_PROTOCOL_VERSION, MODERN_PROTOCOL_VERSION)
+"""Beide gepinnten Revisionen, älteste zuerst — für Doku und Tests."""
 
 # Maschinen-/menschenlesbarer Quellen- + Lizenz-Footer (CH-004).
 SOURCE_FOOTER = f"\n---\n*Quelle: {DATA_SOURCE} ({DATA_SOURCE_URL}) · Lizenz: {DATA_LICENSE}*"
@@ -1281,9 +1312,36 @@ CACHE_HINTS: dict[CacheableMethod, CacheHint] = {
 }
 
 
+# Der Anzeigename, den ein Host statt des Programm-Namens zeigt
+# (`Implementation.title`). Er steht als Literal hier, weil `pyproject.toml`
+# kein Feld dafür hat: `name` ist der Dist-Name, `description` ist der
+# Fliesstext. Ein zweiter Ort, an dem er ebenfalls stünde, wäre eine
+# Drift-Quelle — es gibt keinen.
+SERVER_TITLE = "Schweizer Gerichtsentscheide"
+
+
 def create_mcp(settings: Settings, *, http: bool = False) -> MCPServer:
     """Baut eine MCPServer-Instanz. Auth wird nur im HTTP-Modus verdrahtet."""
     kwargs: dict = dict(
+        # Identität, wie sie das SDK in `serverInfo` stempelt. Ohne `version`
+        # defaultet `MCPServer` auf den Leerstring — gemessen, nicht vermutet:
+        # `server/discover` antwortete mit
+        # `_meta["io.modelcontextprotocol/serverInfo"] = {"name": ..., "version": ""}`.
+        #
+        # In der Handshake-Ära reiste `serverInfo` einmal im
+        # `initialize`-Resultat; in der Modern-Ära (Spec 2026-07-28) gibt es
+        # keinen Handshake, der Stempel hängt stattdessen am `_meta` JEDER
+        # Antwort — und war dort bis hier die einzige Stelle, an der ein Client
+        # den Build erfährt, mit leerem Feld.
+        # Absichtlich OHNE `description`: der Stempel hängt in der Modern-Ära
+        # an jeder Antwort, und die Zweckbeschreibung steht schon in
+        # `instructions` — die reist einmalig in `server/discover`, nicht
+        # per Request. Ein zweites Mal dasselbe auf jeder Antwort wäre Bytes
+        # ohne Empfänger; der SDK-Client liest den Stempel ohnehin aus
+        # `server/discover` (`_parse_server_info_stamp`).
+        version=__version__,
+        title=SERVER_TITLE,
+        website_url=__homepage__,
         instructions=(
             "MCP-Server für Schweizer Gerichtsentscheide via entscheidsuche.ch. "
             "Zugriff auf Urteile des Bundesgerichts (BGer), Bundesverwaltungsgerichts (BVGer), "

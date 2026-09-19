@@ -329,10 +329,28 @@ ohne dass jemand hineingesehen hat, und am 22.8. noch einmal 43.
   in `swiss-courts-mcp` auf dem Draft #83 um 09:24:00 — und um **09:10:47**,
   dreizehn Minuten davor, hatte im *selben Repo* der Review auf #82 mit
   `✅ Completed` geschlossen. Eine fehlende Environment kann das nicht erklären;
-  ohne sie wäre #82 nicht gelaufen. Was der Satz stattdessen bedeutet, ist
-  **ungemessen** — denkbar sind ein anderer Prüfpunkt für Drafts, eine Änderung
-  in diesen dreizehn Minuten oder zwei Codex-Funktionen mit getrennten
-  Anforderungen. Keines davon ist belegt, und die Meldung nennt keine davon.
+  ohne sie wäre #82 nicht gelaufen.
+
+  **Und derselbe PR entschied es dann selbst.** Um 10:11:23 wurde #83 auf
+  «ready for review» geschaltet, und um 10:11:28 stand die Summary-Tabelle auf
+  `🔄 Running` — ein echter Lauf auf demselben Commit, in demselben Repo,
+  47 Minuten nach der Meldung, die angeblich sagte, hier sei Codex nicht
+  benutzbar. Er lief auch durch: `✅ Completed 10:12:27`, 64 s von «ready», und
+  damit ganz normal innerhalb der gemessenen Spanne. Die Meldung **verhindert
+  also keinen Review**; sie stand nur da, solange der PR ein Draft war.
+
+  Die Environment-Meldung ist damit an einen Draft gebunden, nicht an das Repo.
+  Ob sie dort *immer* kommt, ob ein Repo ohne Environment sie auch nach «ready»
+  zeigt und was sie fachlich überhaupt meint, bleibt **ungemessen** — belegt ist
+  nur, dass sie auf einem Draft erschien und einen späteren Lauf nicht
+  blockierte.
+
+  Nebenbefund zur Form: die Tabelle kam als **neuer** Kommentar
+  (`5740959405`), die Environment-Meldung (`5740744996`) blieb unverändert
+  daneben stehen. Das in-place-Überschreiben von unten gilt innerhalb der
+  Summary-Tabelle, nicht zwischen den Formen — auf einem PR können also zwei
+  Codex-Kommentare mit gegensätzlicher Aussage liegen, und der ältere ist nicht
+  der gültige. Wer den ersten liest und aufhört, liest den falschen.
 
   Dieselbe Klasse wie der 403 weiter oben: dort war eine Sperre als Fund-
   Fehlschlag verpackt, hier ist eine unbekannte Ursache als
@@ -449,9 +467,10 @@ Zwei Nebenbefunde aus denselben Läufen:
   bloss zu spät, um noch etwas zu verhindern, und ein Befund stünde dann schon
   in `master`.
 
-  **Und er startet sogar erst nach dem Merge.** Zweimal am 19.9. lag der Merge
-  *vor* dem `Running since`: #80 (Merge 08:34:10, Start 08:34:12) und #82
-  («ready» 09:09:41, Merge 09:09:45, Start 09:09:48, Kommentar 09:09:50). Der
+  **Und er startet sogar erst nach dem Merge.** Dreimal am 19.9. lag der Merge
+  *vor* dem `Running since`: #80 (Merge 08:34:10, Start 08:34:12), #82
+  («ready» 09:09:41, Merge 09:09:45, Start 09:09:48, Kommentar 09:09:50) und
+  #83 («ready» 10:11:23, Merge 10:11:27, Start 10:11:28). Der
   Auslöser ist das Umschalten von Draft auf ready, und ein bereits geschlossener
   PR hält ihn nicht auf. Das ist stärker als der Satz darüber: nicht bloss ein
   laufender Review übersteht den Merge, sondern ein noch nicht begonnener wird
@@ -468,11 +487,14 @@ Zwei Nebenbefunde aus denselben Läufen:
   | #75 | 07:02:03 | 07:02:09 | 07:05:07 | **184 s** |
   | #76 | 07:09:43 | — | 07:10:45 | **62 s** |
   | #82 | 09:09:41 | 09:09:48 | 09:10:47 | **66 s** |
+  | #83 | 10:11:23 | 10:11:28 | 10:12:27 | **64 s** |
 
   62 bis 184 Sekunden, Faktor 2,97 — der längste Lauf brauchte fast das
-  Dreifache des kürzesten. Der fünfte Lauf (#82, gut drei Stunden später) fügt
-  mit 66 s nichts Neues hinzu und **verschiebt die Spanne nicht**; er steht hier,
-  weil er die Positivkontrolle für den Befund ganz unten liefert. Eine Wartezeit lässt sich daraus nicht ableiten, und
+  Dreifache des kürzesten. Die Läufe fünf und sechs (#82 und #83, gut drei
+  Stunden später) fügen mit 66 und 64 s nichts Neues hinzu und **verschieben die
+  Spanne nicht**; #82 steht hier, weil er die Positivkontrolle für den Befund
+  ganz unten liefert, #83, weil sein Lauf die Environment-Meldung von oben
+  entkräftet. Eine Wartezeit lässt sich daraus nicht ableiten, und
   ein früherer Stand dieses Abschnitts tat es doch: dort stand «wer eine Minute
   wartet, hat den Prüfer», gestützt auf die ersten zwei Punkte. Der dritte
   widerlegt es, der vierte hätte ihn wieder bestätigt.
@@ -506,20 +528,20 @@ Zwei Nebenbefunde aus denselben Läufen:
   erfindet sie — nachgemessen wird, bis der Status sich ändert.
 
 - **Aber es endet nicht immer, und dann hat die Regel darüber ein Loch.** Auf
-  #80 stand die Tabelle am 19.9. um 09:21:56 noch auf `🔄 Running since
-  08:34:12`, `updated_at` unverändert auf 08:34:14 — **47 Minuten**, viermal
-  nachgemessen (08:51, 09:08, 09:11, 09:21), `get_reviews` leer. Gegen 184 s
-  Maximum der Reihe oben ist das der Faktor 15.
+  #80 stand die Tabelle am 19.9. um 10:12:40 noch auf `🔄 Running since
+  08:34:12`, `updated_at` unverändert auf 08:34:14 — **98 Minuten**, sechsmal
+  nachgemessen (08:51, 09:08, 09:11, 09:21, 09:51, 10:12), `get_reviews` leer.
+  Gegen 184 s Maximum der Reihe oben ist das der Faktor 32.
 
-  **Die Positivkontrolle steht im selben Repo und in derselben Stunde:** #82
-  wurde 35 Minuten *nach* #80 ausgelöst und war nach 66 s fertig. Ein
-  erschöpftes Kontingent, eine fehlende Environment oder ein Ausfall des
-  Dienstes erklären #80 damit nicht — sonst wäre #82 mitgefallen. Genau so wird
-  aus einem «nicht fertig» eine Messung: eine gleichzeitige Abfrage findet
-  etwas.
+  **Die Positivkontrolle steht im selben Repo und am selben Vormittag, und
+  inzwischen zweifach:** #82 wurde 35 Minuten *nach* #80 ausgelöst und war nach
+  66 s fertig, #83 anderthalb Stunden danach nach 64 s. Ein erschöpftes
+  Kontingent, eine fehlende Environment oder ein Ausfall des Dienstes erklären
+  #80 damit nicht — sonst wären die beiden mitgefallen. Genau so wird aus einem
+  «nicht fertig» eine Messung: eine gleichzeitige Abfrage findet etwas.
 
   Was die Beobachtungen **nicht** hergeben: die Ursache. Und ob dieser Lauf je
-  endet — die 47 Minuten sind der Abstand zweier Beobachtungen, nicht eine
+  endet — die 98 Minuten sind der Abstand zweier Beobachtungen, nicht eine
   Dauer, und der Absatz darüber gilt weiter: ein stehender Status ist kein
   Abbruch.
 
@@ -550,8 +572,8 @@ Findet nur, wo er *kommentiert* hat. Repos ohne PR-Aktivität tauchen nicht auf
 
 Zweiter Weg, den Prüfer zu verlieren, ganz ohne Kontingentproblem: zu schnell
 mergen. Am 21./22.8. lagen zwischen «ready for review» und Merge mehrfach drei
-bis fünf Sekunden, am 19.9. in `swiss-courts-mcp` noch dreimal dasselbe (#73:
-drei Sekunden, #74: vier, #82: vier). Codex wird beim Umschalten von Draft auf ready
+bis fünf Sekunden, am 19.9. in `swiss-courts-mcp` noch viermal dasselbe (#73:
+drei Sekunden, #74: vier, #82: vier, #83: vier). Codex wird beim Umschalten von Draft auf ready
 ausgelöst und braucht danach Zeit; wer sofort mergt, hat das Häkchen gesetzt und
 den Review nicht abgewartet.
 
@@ -600,10 +622,12 @@ erledigt hält, mergt weiter Ungeprüftes.
 
 **Umgekehrt gilt das nicht:** die Meldung belegt nicht, dass für dieses Repo
 keine Environment existiert. Am 19.9.2026 kam sie in `swiss-courts-mcp`
-dreizehn Minuten nach einem abgeschlossenen Review desselben Repos. Bevor also
-jemand eine Environment anlegt, weil die Meldung es verlangt: nachsehen, ob im
-selben Repo kurz zuvor ein Review durchlief. Lief einer, ist die Meldung
-unerklärt und die Environment nicht die Ursache.
+dreizehn Minuten nach einem abgeschlossenen Review desselben Repos — und auf
+demselben PR lief 47 Minuten später, nach dem Umschalten auf «ready», ein
+echter Review an. Bevor also jemand eine Environment anlegt, weil die Meldung
+es verlangt: nachsehen, ob im selben Repo kurz zuvor ein Review durchlief, und
+ob der PR ein Draft war. Trifft eines zu, ist die Meldung unerklärt und die
+Environment nicht die Ursache.
 
 ---
 

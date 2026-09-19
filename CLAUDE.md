@@ -21,6 +21,46 @@ Ein veralteter Klon erzeugt eine rote CI, deren Ursache nicht im Diff steht.
 Am 3.8.2026 zweimal passiert — beide Male fehlten genau die Commits, die
 das Gate einführten, an dem der Branch scheiterte.
 
+**Nach einem Merge den Branch-Ref wegräumen — sonst meldet git fremde Commits
+als eigene, ungesicherte Arbeit.** GitHub löscht den Feature-Branch beim Merge;
+der lokale Tracking-Ref `origin/claude/<name>` überlebt das und zeigt weiter auf
+den Stand *vor* dem Merge. Setzt man den gleichnamigen lokalen Branch danach auf
+den frischen Default-Branch, liest git die Differenz als «N unpushed commits».
+
+Am 19.9.2026 dreimal aufgetreten, und der mittlere Fall zeigt, warum es
+gefährlich ist: gemeldet waren drei Commits, und **zwei davon gehörten nicht
+mir** — `21ca5c4` (Merge eines Dependabot-PR) und `b456439`
+(`build(deps): bump actions/github-script from 7 to 9`). Alle drei standen
+längst auf `origin/master`:
+
+```bash
+git ls-remote --heads origin claude/<name> | wc -l   # 0 — remote gelöscht
+git branch -r --contains HEAD                        # origin/master
+```
+
+Wer die Meldung durch einen Push beruhigt, legt einen erledigten Branch neu an
+und veröffentlicht fremde, längst gemergte Commits unter dem eigenen Namen. Der
+richtige Griff ist lokal:
+
+```bash
+git fetch --prune origin        # OHNE Refspec
+```
+
+**Das `--prune` verliert seine Wirkung, sobald ein Refspec dahintersteht.**
+`git fetch --prune origin master` räumt nur innerhalb von `master` auf; der
+tote Branch-Ref bleibt stehen. Genau so entstand der dritte Fehlalarm desselben
+Tages — der Befehl war getippt, sah nach Erledigung aus und hatte die eine
+Referenz nicht angefasst, um die es ging. Der Frische-Check ganz
+oben benutzt aus demselben Grund einen Refspec und ersetzt dieses `--prune`
+deshalb **nicht**.
+
+Der Fehlalarm ist dabei nicht bloss lästig. Im selben mittleren Fall verdeckte
+er eine echte Veralterung: das Aufräumen brachte ein `[behind 2]` zum Vorschein
+— `master` war inzwischen um zwei Dependabot-Merges weitergelaufen, während der
+Blick auf einem Ref lag, der rückwärts zeigte. Also genau der Zustand, vor dem
+der Absatz darüber warnt, getarnt als sein Gegenteil: die Meldung sprach von
+Arbeit, die zu sichern sei, und der Klon hinkte in Wahrheit hinterher.
+
 Gates lokal fahren, mit der GEPINNTEN ruff-Version aus der CI. Eine andere
 Version meldet Abweichungen, die niemand verursacht hat.
 

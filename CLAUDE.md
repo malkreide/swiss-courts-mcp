@@ -486,9 +486,9 @@ Zwei Nebenbefunde aus denselben Läufen:
   bloss zu spät, um noch etwas zu verhindern, und ein Befund stünde dann schon
   in `master`.
 
-  **Und er startet sogar erst nach dem Merge.** Dreimal am 19.9. lag der Merge
+  **Und er startet sogar erst nach dem Merge.** Viermal am 19.9. lag der Merge
   *vor* dem `Running since`: #80 (Merge 08:34:10, Start 08:34:12), #82
-  («ready» 09:09:41, Merge 09:09:45, Start 09:09:48, Kommentar 09:09:50) und
+  («ready» 09:09:41, Merge 09:09:45, Start 09:09:48, Kommentar 09:09:50),
   #83 («ready» 10:11:23, Merge 10:11:27, Start 10:11:28) und #84 («ready»
   10:17:45, Merge 10:17:47, Start 10:17:49). Der
   Auslöser ist das Umschalten von Draft auf ready, und ein bereits geschlossener
@@ -497,8 +497,9 @@ Zwei Nebenbefunde aus denselben Läufen:
   von ihm auch nicht verhindert. Wer also mergt, um dem Review zuvorzukommen,
   bekommt ihn trotzdem — nur eben in den Default-Branch hinein.
 
-- **Die Dauer streut, und zwar erheblich.** Vier Läufe am 19.9., vier Diffs
-  ähnlicher Grösse im selben Repo, alle innerhalb von 34 Minuten:
+- **Die Dauer streut, und zwar erheblich.** Sieben Läufe am 19.9., Diffs
+  ähnlicher Grösse im selben Repo; die ersten vier innerhalb von 34 Minuten,
+  die übrigen drei am späteren Vormittag:
 
   | PR | «ready» | Start | `Completed` | ready → `Completed` |
   |---|---|---|---|---|
@@ -511,11 +512,11 @@ Zwei Nebenbefunde aus denselben Läufen:
   | #84 | 10:17:45 | 10:17:49 | 10:18:50 | **65 s** |
 
   62 bis 184 Sekunden, Faktor 2,97 — der längste Lauf brauchte fast das
-  Dreifache des kürzesten. Die Läufe fünf und sechs (#82 und #83, gut drei
-  Stunden später) fügen mit 66, 64 und 65 s nichts Neues hinzu und **verschieben
-  die Spanne nicht**; #82 steht hier, weil er die Positivkontrolle für den
-  Befund ganz unten liefert, #83, weil sein Lauf die Environment-Meldung von
-  oben entkräftet, #84 als dritte Kontrolle. Eine Wartezeit lässt sich daraus nicht ableiten, und
+  Dreifache des kürzesten. Die Läufe fünf bis sieben (#82, #83 und #84, gut
+  drei Stunden später) fügen mit 66, 64 und 65 s nichts Neues hinzu und
+  **verschieben die Spanne nicht**; #82 steht hier, weil er die
+  Positivkontrolle für den Befund ganz unten liefert, #83, weil sein Lauf die
+  Environment-Meldung von oben entkräftet, #84 als dritte Kontrolle. Eine Wartezeit lässt sich daraus nicht ableiten, und
   ein früherer Stand dieses Abschnitts tat es doch: dort stand «wer eine Minute
   wartet, hat den Prüfer», gestützt auf die ersten zwei Punkte. Der dritte
   widerlegt es, der vierte hätte ihn wieder bestätigt.
@@ -607,11 +608,13 @@ vergingen dort **184 Sekunden**, und der Merge lag 46 Sekunden nach dem Start
 des Reviews.
 
 Wie lange es dauert, steht oben bei der fünften Form, und die Antwort ist
-unbrauchbar als Frist: **72, 63, 184 und 62 Sekunden** bei vier ähnlichen Diffs
-desselben Repos in 34 Minuten. Der längste Lauf war fast dreimal so lang wie
-der kürzeste, und der kürzeste kam unmittelbar nach ihm — eine Wartemarke aus
-den ersten beiden Läufen hätte den dritten verfehlt und wäre vom vierten wieder
-bestätigt worden. Genau so entsteht eine Regel, die meistens stimmt und im
+unbrauchbar als Frist: **72, 63, 184, 62, 66, 64 und 65 Sekunden** bei sieben
+ähnlichen Diffs desselben Repos an einem Vormittag; die ersten vier lagen in
+34 Minuten. Der längste Lauf war fast dreimal so lang wie der kürzeste, und der
+kürzeste kam unmittelbar nach ihm — eine Wartemarke aus den ersten beiden Läufen
+hätte den dritten verfehlt und wäre von den vier folgenden wieder bestätigt
+worden. Sechs von sieben liegen zwischen 62 und 72 Sekunden, und genau das macht
+die Marke verführerisch. Genau so entsteht eine Regel, die meistens stimmt und im
 entscheidenden Fall nicht. Der Lauf wird dabei
 nicht abgebrochen; er endet nur, wenn niemand mehr etwas davon hat, und ein
 Befund stünde dann schon im Default-Branch.

@@ -407,12 +407,33 @@ Zwei Nebenbefunde aus denselben Läufen:
   bloss zu spät, um noch etwas zu verhindern, und ein Befund stünde dann schon
   in `master`.
 
-- **Die Dauer streut, und zwar erheblich.** Von «ready» bis `Completed`: **72,
-  63 und 178 Sekunden.** Der längste Lauf brauchte fast das Dreifache des
-  kürzesten, bei drei Diffs ähnlicher Grösse im selben Repo, innerhalb von
-  26 Minuten. Eine Wartezeit lässt sich daraus nicht ableiten — und ein früherer
-  Stand dieses Abschnitts tat es doch: dort stand «wer eine Minute wartet, hat
-  den Prüfer», gestützt auf die ersten zwei Punkte. Der dritte widerlegt es.
+- **Die Dauer streut, und zwar erheblich.** Vier Läufe am 19.9., vier Diffs
+  ähnlicher Grösse im selben Repo, alle innerhalb von 34 Minuten:
+
+  | PR | «ready» | Start | `Completed` | ready → `Completed` |
+  |---|---|---|---|---|
+  | #73 | 06:36:16 | 06:36:24 | 06:37:28 | **72 s** |
+  | #74 | 06:56:15 | — | 06:57:18 | **63 s** |
+  | #75 | 07:02:03 | 07:02:09 | 07:05:07 | **184 s** |
+  | #76 | 07:09:43 | — | 07:10:45 | **62 s** |
+
+  62 bis 184 Sekunden, Faktor 2,97 — der längste Lauf brauchte fast das
+  Dreifache des kürzesten. Eine Wartezeit lässt sich daraus nicht ableiten, und
+  ein früherer Stand dieses Abschnitts tat es doch: dort stand «wer eine Minute
+  wartet, hat den Prüfer», gestützt auf die ersten zwei Punkte. Der dritte
+  widerlegt es, der vierte hätte ihn wieder bestätigt.
+
+  **Die Spalte «Start» ist der Grund, warum die Tabelle hier steht.** Ein
+  früherer Stand nannte die Reihe «72, 63 und 178 Sekunden» — und die 178 waren
+  vom *Start* gerechnet, die anderen beiden von «ready». Drei Zahlen
+  nebeneinander, zwei Nullpunkte, und die Abweichung fiel nicht auf, weil das
+  Ergebnis in die erwartete Richtung zeigte. Von «ready» an sind es 184.
+  Codex läuft dort an, wo es gemessen ist, 8 bzw. 6 Sekunden nach dem
+  Umschalten; auf #74 und #76 stand der Kommentar schon beim Anlegen auf
+  `Completed`, ein Start ist dort nicht beobachtet.
+
+  Wer Laufzeiten vergleicht, nennt also den Nullpunkt dazu. Für die
+  Entscheidung zählt «ready»: das ist der Moment, den ein Mensch setzt.
 
   **Also nicht auf eine Zeitspanne warten, sondern auf den Beleg:** die
   Summary-Tabelle auf `✅ Completed`, mit dem Commit des Heads.
@@ -455,14 +476,19 @@ den Review nicht abgewartet.
 **Der lehrreichste Fall ist der dritte, und er sieht gar nicht nach Eile aus.**
 PR #75 wurde am 19.9. **52 Sekunden** nach «ready for review» gemergt — mehr als
 das Zehnfache der drei bzw. vier Sekunden, eine Pause, die wie bewusstes
-Abwarten aussieht. Sie reichte trotzdem nicht: dieser Review brauchte 178
-Sekunden, und der Merge lag 46 Sekunden nach seinem Start.
+Abwarten aussieht. Sie reichte trotzdem nicht: von «ready» bis `Completed`
+vergingen dort **184 Sekunden**, und der Merge lag 46 Sekunden nach dem Start
+des Reviews.
 
 Wie lange es dauert, steht oben bei der fünften Form, und die Antwort ist
-unbrauchbar als Frist: **72, 63 und 178 Sekunden** bei drei ähnlichen Diffs
-desselben Repos in 26 Minuten. Der Lauf wird dabei nicht abgebrochen — er endet
-nur, wenn niemand mehr etwas davon hat, und ein Befund stünde dann schon im
-Default-Branch.
+unbrauchbar als Frist: **72, 63, 184 und 62 Sekunden** bei vier ähnlichen Diffs
+desselben Repos in 34 Minuten. Der längste Lauf war fast dreimal so lang wie
+der kürzeste, und der kürzeste kam unmittelbar nach ihm — eine Wartemarke aus
+den ersten beiden Läufen hätte den dritten verfehlt und wäre vom vierten wieder
+bestätigt worden. Genau so entsteht eine Regel, die meistens stimmt und im
+entscheidenden Fall nicht. Der Lauf wird dabei
+nicht abgebrochen; er endet nur, wenn niemand mehr etwas davon hat, und ein
+Befund stünde dann schon im Default-Branch.
 
 Deshalb ist die Regel nicht «kurz warten», sondern **auf den Beleg warten**: die
 Summary-Tabelle auf `✅ Completed` mit dem Commit des Heads. Wer Sekunden zählt,

@@ -45,6 +45,19 @@ class Settings(BaseModel):
     oauth_audience: str | None = Field(default=None)
     required_scopes: list[str] = Field(default_factory=list)
 
+    # Öffentliche URL, unter der dieser Server erreicht wird, via
+    # MCP_RESOURCE_URL (z. B. "https://mcp.example.ch"). Sie ist der
+    # Resource-Identifier nach RFC 9728: der Server publiziert sie unter
+    # `/.well-known/oauth-protected-resource` und nennt sie im
+    # `WWW-Authenticate`-Header jeder 401.
+    #
+    # Ohne sie fällt `_build_auth` auf die Bind-Adresse zurück, und die ist im
+    # Container `http://0.0.0.0:8000` — nachgemessen genau der Wert, den der
+    # Server dann jedem unauthentifizierten Client als Ort zum Token-Holen
+    # nennt. `0.0.0.0` kann kein Client anwählen. Dieselbe Klasse wie
+    # `allowed_hosts`: der erreichbare Name steht nicht in der Bind-Adresse.
+    resource_url: str | None = Field(default=None)
+
     # --- CORS (SDK-004) ---
     cors_origins: list[str] = Field(default_factory=list)
 
@@ -70,6 +83,7 @@ class Settings(BaseModel):
             oauth_issuer=os.environ.get("MCP_OAUTH_ISSUER"),
             oauth_audience=os.environ.get("MCP_OAUTH_AUDIENCE"),
             required_scopes=_env_list("MCP_REQUIRED_SCOPES"),
+            resource_url=os.environ.get("MCP_RESOURCE_URL"),
             cors_origins=_env_list("MCP_CORS_ORIGINS"),
             allowed_hosts=_env_list("MCP_ALLOWED_HOSTS"),
         )

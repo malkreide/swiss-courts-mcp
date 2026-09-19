@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Sicherheit
 
+- **Der Server schickte OAuth-Clients auf `0.0.0.0` (SEC-009, RFC 9728).**
+  `_build_auth` setzte als `resource_server_url` die Bind-Adresse ein. Das SDK
+  publiziert diesen Wert als Resource-Identifier unter
+  `/.well-known/oauth-protected-resource` und nennt ihn im
+  `WWW-Authenticate`-Header jeder 401 — genau dort sucht ein Client, wo er ein
+  Token holt. Nachgemessen mit Container-Bind:
+
+  ```json
+  {"resource": "http://0.0.0.0:8000",
+   "authorization_servers": ["http://0.0.0.0:8000"],
+   "bearer_methods_supported": ["header"]}
+  ```
+
+  `0.0.0.0` ist keine Adresse, die ein Client anwählen kann. Wer dem Standard
+  folgte, lief ins Leere — und nichts im Server wies darauf hin.
+
+  Neu: **`MCP_RESOURCE_URL`** (`Settings.resource_url`) für die öffentliche URL
+  dieses Servers. `_public_url(settings)` bevorzugt sie, schneidet einen
+  abschliessenden Schrägstrich ab (RFC 8414/9207 vergleichen exakte
+  Zeichenketten) und fällt sonst auf die Bind-Adresse zurück — mit Warnung bei
+  Nicht-Loopback-Bind, wie `build_transport_security` es bei `allowed_hosts`
+  tut. Kein `None` wie dort: ohne `resource_server_url` fielen Metadaten-Route
+  und 401-Hinweis ganz weg, und eine unerreichbare Angabe mit Warnung ist
+  besser als eine fehlende Auskunft ohne.
+
+  `authorization_servers` reist mit: ohne `MCP_OAUTH_ISSUER` trug der Server
+  sich selbst dort ein, und zwar unter der Bind-Adresse. Jetzt ist die Adresse
+  wenigstens erreichbar, und eine zweite Warnung benennt den Issuer als das,
+  was fehlt. **Offen und in ADR 0001 vermerkt:** dass der Server sich
+  überhaupt als Authorization Server ausgibt, ist sachlich falsch; ein Zwang
+  wie bei `MCP_OAUTH_AUDIENCE` wäre denkbar, ist aber nicht gemessen.
+
+  **An `validate_token_resource` ändert das nichts, und das ist der Punkt.**
+  Der CHANGELOG-Eintrag darunter nannte die fehlende Einstellung als offenen
+  Punkt und verortete ihn beim Token-Check — zu eng. `True` prüfte
+  `AccessToken.resource` gegen `resource_server_url`, und dieser Server stellt
+  dort `oauth_audience` ein: dasselbe Feld, das der Verifier seit der
+  Publikumsbindung unbedingt prüft. Eine zweite Prüfung derselben Tatsache
+  sichert nichts. Der eigentliche Befund war die Publikation, nicht die
+  Prüfung.
+
 - **Auth ohne Publikumsbindung nahm Tokens fremder Dienste an (SEC-009).**
   `JWTTokenVerifier._decode` setzte `verify_aud` auf
   `bool(settings.oauth_audience)`: fehlte `MCP_OAUTH_AUDIENCE`, entfiel die

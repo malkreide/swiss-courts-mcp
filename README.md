@@ -132,6 +132,7 @@ Relevant environment variables (see [`.env.example`](.env.example)):
 | `MCP_OAUTH_JWKS_URL` | — | JWKS URL for RS256 validation (production). |
 | `MCP_OAUTH_AUDIENCE` | — | **Required with auth.** Resource identifier the IdP binds tokens to (`aud`). |
 | `MCP_OAUTH_ISSUER` | — | Expected token issuer (optional). |
+| `MCP_RESOURCE_URL` | bind address | **Public URL of this server** — the RFC 9728 resource identifier. Set it on any non-loopback bind. |
 | `MCP_REQUIRED_SCOPES` | — | Comma-separated required scopes. |
 | `MCP_CORS_ORIGINS` | — | Comma-separated allowed origins (no wildcard in prod). |
 
@@ -143,6 +144,14 @@ binds a token to *this* server. Without it the verifier did not check the
 audience at all and accepted any correctly signed token from the same issuer —
 including one minted for a different service (confused deputy). The server now
 refuses to start in auth mode without it.
+
+**`MCP_RESOURCE_URL` is what an OAuth client needs.** Per RFC 9728 the server
+publishes a resource identifier at `/.well-known/oauth-protected-resource` and
+names it in the `WWW-Authenticate` header of every 401 — that is where a client
+looks to find out where to get a token. Without the variable the server
+publishes its *bind* address; measured with a container bind, that was
+`{"resource": "http://0.0.0.0:8000", …}`, an address no client can dial. Set it
+on any non-loopback bind; the server warns at startup when it is missing.
 
 The SDK's own `validate_token_resource` stays **off** for a measured reason: it
 compares the token's resource indicator literally against

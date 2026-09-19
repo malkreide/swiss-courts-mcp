@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Sicherheit
+
+- **Auth ohne Publikumsbindung nahm Tokens fremder Dienste an (SEC-009).**
+  `JWTTokenVerifier._decode` setzte `verify_aud` auf
+  `bool(settings.oauth_audience)`: fehlte `MCP_OAUTH_AUDIENCE`, entfiel die
+  Prüfung des `aud`-Claims lautlos, während der Server weiterhin als «Auth
+  aktiviert» galt. Ein korrekt signiertes Token desselben Issuers — für einen
+  ganz anderen Dienst ausgestellt — wurde damit akzeptiert. Nachgemessen, nicht
+  aus dem Code geschlossen: ein Token mit
+  `aud: "https://ganz-anderer-dienst.example"` kam durch und wird jetzt als
+  `InvalidAudienceError` abgelehnt. Das ist der klassische Confused Deputy.
+
+  `MCP_OAUTH_AUDIENCE` ist deshalb **Pflicht**, sobald `MCP_AUTH_ENABLED=true`
+  ist: ohne die Variable entsteht gar kein Verifier mehr, mit einer
+  Fehlermeldung, die sie benennt. `verify_aud` steht danach fest auf `True` —
+  der Konstruktor lässt keinen Verifier ohne Publikum entstehen.
+
+  **Verhaltensänderung:** ein HTTP-Deployment mit aktivierter Auth und ohne
+  `MCP_OAUTH_AUDIENCE` startet nicht mehr. Das ist beabsichtigt: es lief
+  bisher mit einer Prüfung, die es nicht gab.
+
+  `verify_iss` bleibt bedingt. `MCP_OAUTH_ISSUER` ist weiterhin optional, und
+  `_build_auth` setzt ersatzweise die eigene Basis-URL als `issuer_url` ein —
+  ein erzwungenes `True` prüfte dort gegen einen Wert, den nie ein IdP
+  ausgestellt hat. Eigene Baustelle, hier nicht mitbehauptet.
+
+- **`AuthSettings.validate_token_resource` steht jetzt ausdrücklich auf
+  `False`.** Ungesetzt verhält sich das Feld wie `False`, warnt aber
+  (`MCPDeprecationWarning`), und `mcp` 3.0 dreht den Default bei gesetztem
+  `resource_server_url` auf `True`. Die Entscheidung gehört damit in diesen
+  Code und nicht in einen künftigen SDK-Bump.
+
+  `False` ist die richtige Seite, weil der Verifier das Publikum selbst prüft —
+  seit dem Zwang oben unbedingt. Genau diesen Fall nennt die SDK-Beschreibung
+  als Grund für `False`.
+
+  `True` wäre nicht bloss unnötig, sondern falsch, und das ist gemessen: das
+  SDK vergleicht `AccessToken.resource` als URL wörtlich mit
+  `resource_server_url` (`bearer_auth._issued_for_this_resource`), und dieser
+  Server stellt dort `settings.oauth_audience` ein. Am zusammengebauten Stack,
+  `initialize` mit gültigem Bearer:
+
+  | `aud` | `validate_token_resource` | HTTP |
+  |---|---|---|
+  | fehlt | `True` | 401 |
+  | `swiss-courts-mcp` (keine URL) | `True` | 401 |
+  | `http://127.0.0.1:8000` (== Bind-URL) | `True` | 200 |
+  | `swiss-courts-mcp` | `False` | 200 |
+
+  Nur ein Publikum, das wörtlich die Bind-URL ist, kommt durch. `base` ist aber
+  die Bind-Adresse, nicht der Name, unter dem der Server erreicht wird: hinter
+  einem Reverse-Proxy ist das ein öffentlicher DNS-Name, und `0.0.0.0:8000`
+  schreibt kein IdP in ein `aud`. Eingeschaltet hätte das Feld jeden realen
+  Client ausgesperrt — die CLAUDE.md-Warnung, ein stillschweigendes `True`
+  könne jede echte Anfrage abweisen, war also berechtigt.
+
+  Offen bleibt: es fehlt eine Einstellung für die *öffentliche* Resource-URL.
+  Solange die fehlt, ist `resource_server_url` eine Verlegenheitsangabe, und
+  die Publikumsprüfung liegt beim Verifier — dort, wo sie nachgemessen greift.
+
 ### Behoben
 
 - **Der Server sagte nicht, welchen Build er ist.** `MCPServer(version=...)`

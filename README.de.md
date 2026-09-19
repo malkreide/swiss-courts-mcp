@@ -130,11 +130,26 @@ Relevante Umgebungsvariablen (siehe [`.env.example`](.env.example)):
 | `MCP_AUTH_ENABLED` | `false` | Aktiviert Bearer-Token-Auth für HTTP. |
 | `MCP_AUTH_SECRET` | — | HS256-Signing-Key (Entwicklung). |
 | `MCP_OAUTH_JWKS_URL` | — | JWKS-URL für RS256-Validierung (Produktion). |
+| `MCP_OAUTH_AUDIENCE` | — | **Pflicht mit Auth.** Resource-Identifier, auf den der IdP Tokens bindet (`aud`). |
+| `MCP_OAUTH_ISSUER` | — | Erwarteter Token-Issuer (optional). |
 | `MCP_REQUIRED_SCOPES` | — | Komma-separierte erforderliche Scopes. |
 | `MCP_CORS_ORIGINS` | — | Komma-separierte erlaubte Origins (keine Wildcard in Prod). |
 
 Die User-Identität stammt aus dem validierten JWT-`sub`-Claim; siehe
 [ADR 0001](docs/adr/0001-http-auth.md).
+
+**`MCP_OAUTH_AUDIENCE` ist Pflicht, sobald Auth aktiv ist.** Das `aud`-Claim
+bindet ein Token an *diesen* Server. Ohne die Variable prüfte der Verifier das
+Publikum gar nicht und nahm jedes korrekt signierte Token desselben Issuers an
+— auch eines, das für einen anderen Dienst ausgestellt wurde (Confused Deputy).
+Der Server startet im Auth-Modus jetzt nicht mehr ohne sie.
+
+Das SDK-eigene `validate_token_resource` bleibt aus **einem gemessenen Grund
+aus**: es vergleicht den Resource-Indicator des Tokens wörtlich mit
+`resource_server_url`, und das ist hier die *Bind*-Adresse. Ein Token, dessen
+Publikum nicht genau diese URL ist, wird mit 401 abgewiesen — eingeschaltet
+würde es also jeden realen Client aussperren, während die Publikumsprüfung
+oben das ist, was den Server tatsächlich schützt.
 
 ### Offline-Fallback (ENV)
 

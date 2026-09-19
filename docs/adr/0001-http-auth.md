@@ -19,6 +19,28 @@ Kombination mit einem `0.0.0.0`-Bind wäre er vollständig offen (NeighborJack).
    - Token-`exp` erzwingt die Session-TTL; abgelaufene Token werden abgelehnt.
    - HS256 (Secret) für Entwicklung, RS256/JWKS für Produktion.
    - Optionale Scope-Prüfung (`MCP_REQUIRED_SCOPES`).
+   - **Publikumsbindung ist Pflicht** (`MCP_OAUTH_AUDIENCE`, Nachtrag
+     2026-09-19): das `aud`-Claim bindet das Token an *diesen* Server. Die
+     ursprüngliche Fassung machte die Prüfung von der Variable abhängig
+     (`verify_aud=bool(oauth_audience)`) — fehlte sie, entfiel die Prüfung
+     lautlos, und ein Token, das derselbe Issuer für einen anderen Dienst
+     ausgestellt hatte, galt hier ebenfalls (Confused Deputy, nachgemessen).
+     Ohne die Variable entsteht jetzt gar kein Verifier mehr.
+   - **`AuthSettings.validate_token_resource` steht ausdrücklich auf `False`**
+     (Nachtrag 2026-09-19). Ungesetzt verhält sich das Feld heute wie `False`,
+     warnt aber, und `mcp` 3.0 dreht den Default bei gesetztem
+     `resource_server_url` auf `True` — die Entscheidung gehört also in den
+     Code. `False` ist hier richtig, weil der Verifier das Publikum selbst
+     prüft (siehe oben, seit dem Zwang unbedingt). `True` wäre falsch, und
+     zwar messbar: das SDK vergleicht `AccessToken.resource` als URL wörtlich
+     mit `resource_server_url`, und das ist die Bind-Adresse
+     (`http://<host>:<port>`). Am zusammengebauten Stack, `initialize` mit
+     gültigem Bearer: fehlendes Publikum → 401, Publikum `swiss-courts-mcp`
+     → 401, Publikum gleich der Bind-URL → 200. Hinter einem Reverse-Proxy ist
+     die erreichbare URL ein anderer Name, und `0.0.0.0:8000` schreibt kein
+     IdP in ein `aud`. Was fehlt, ist eine Einstellung für die *öffentliche*
+     Resource-URL; solange die fehlt, ist `resource_server_url` hier eine
+     Verlegenheitsangabe.
 3. **Sicherer Bind-Default** `127.0.0.1`; `0.0.0.0` nur bewusst per
    `MCP_HOST` + `MCP_ALLOW_PUBLIC_BIND` (im Dockerfile gesetzt).
 4. **`stateless_http`** standardmässig aktiv → horizontale Skalierung ohne

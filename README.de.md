@@ -132,6 +132,7 @@ Relevante Umgebungsvariablen (siehe [`.env.example`](.env.example)):
 | `MCP_OAUTH_JWKS_URL` | — | JWKS-URL für RS256-Validierung (Produktion). |
 | `MCP_OAUTH_AUDIENCE` | — | **Pflicht mit Auth.** Resource-Identifier, auf den der IdP Tokens bindet (`aud`). |
 | `MCP_OAUTH_ISSUER` | — | Erwarteter Token-Issuer (optional). |
+| `MCP_RESOURCE_URL` | Bind-Adresse | **Öffentliche URL dieses Servers** — der Resource-Identifier nach RFC 9728. Bei Nicht-Loopback-Bind setzen. |
 | `MCP_REQUIRED_SCOPES` | — | Komma-separierte erforderliche Scopes. |
 | `MCP_CORS_ORIGINS` | — | Komma-separierte erlaubte Origins (keine Wildcard in Prod). |
 
@@ -143,6 +144,15 @@ bindet ein Token an *diesen* Server. Ohne die Variable prüfte der Verifier das
 Publikum gar nicht und nahm jedes korrekt signierte Token desselben Issuers an
 — auch eines, das für einen anderen Dienst ausgestellt wurde (Confused Deputy).
 Der Server startet im Auth-Modus jetzt nicht mehr ohne sie.
+
+**`MCP_RESOURCE_URL` ist das, was ein OAuth-Client braucht.** Nach RFC 9728
+publiziert der Server einen Resource-Identifier unter
+`/.well-known/oauth-protected-resource` und nennt ihn im `WWW-Authenticate`-
+Header jeder 401 — dort sieht ein Client nach, wo er ein Token holt. Ohne die
+Variable publiziert er seine *Bind*-Adresse; nachgemessen mit Container-Bind war
+das `{"resource": "http://0.0.0.0:8000", …}`, eine Adresse, die kein Client
+anwählen kann. Bei jedem Nicht-Loopback-Bind setzen; fehlt sie, warnt der
+Server beim Start.
 
 Das SDK-eigene `validate_token_resource` bleibt aus **einem gemessenen Grund
 aus**: es vergleicht den Resource-Indicator des Tokens wörtlich mit

@@ -41,6 +41,35 @@ Kombination mit einem `0.0.0.0`-Bind wäre er vollständig offen (NeighborJack).
      IdP in ein `aud`. Was fehlt, ist eine Einstellung für die *öffentliche*
      Resource-URL; solange die fehlt, ist `resource_server_url` hier eine
      Verlegenheitsangabe.
+   - **`MCP_RESOURCE_URL`** (Nachtrag 2026-09-19, zweiter Teil): die
+     öffentliche URL dieses Servers, als `resource_server_url`. Der obige
+     Nachtrag nannte ihr Fehlen einen offenen Punkt und verortete ihn beim
+     Token-Check — das war zu eng. Nachgemessen betrifft es vor allem, was der
+     Server **publiziert**: mit 0.0.0.0-Bind gab
+     `/.well-known/oauth-protected-resource` (RFC 9728)
+     `{"resource": "http://0.0.0.0:8000", "authorization_servers":
+     ["http://0.0.0.0:8000"]}` heraus, und die 401 nannte dieselbe Adresse als
+     `resource_metadata`. Ein Client, der dem Standard folgt, um den Ort fürs
+     Token zu finden, landete auf einer nicht anwählbaren Adresse.
+
+     Rückfallebene bleibt die Bind-Adresse — das SDK verlangt eine
+     `resource_server_url`, und ohne sie fielen Metadaten-Route und
+     401-Hinweis ganz weg; eine unerreichbare Angabe mit Warnung ist besser als
+     gar keine. Bei Nicht-Loopback-Bind warnt `_public_url`, wie
+     `build_transport_security` es bei `allowed_hosts` tut: der erreichbare
+     Name steht nicht in der Bind-Adresse, also nicht raten.
+
+     An `validate_token_resource` ändert das nichts. `True` prüfte
+     `AccessToken.resource` gegen `resource_server_url`, und dieser Server
+     stellt dort `oauth_audience` ein — dasselbe Feld, das der Verifier bereits
+     unbedingt prüft. Eine zweite Prüfung derselben Tatsache sichert nichts
+     zusätzlich.
+   - **Offen:** ohne `MCP_OAUTH_ISSUER` trägt der Server sich selbst als
+     `authorization_servers` ein, was sachlich falsch ist — er stellt keine
+     Tokens aus. Die Adresse ist jetzt wenigstens erreichbar, und `_public_url`
+     warnt; richtig wird es erst mit gesetztem Issuer. Ein Zwang wie bei
+     `MCP_OAUTH_AUDIENCE` wäre denkbar, ist hier aber nicht gemessen: welche
+     Clients das Feld überhaupt auswerten, wurde nicht geprüft.
 3. **Sicherer Bind-Default** `127.0.0.1`; `0.0.0.0` nur bewusst per
    `MCP_HOST` + `MCP_ALLOW_PUBLIC_BIND` (im Dockerfile gesetzt).
 4. **`stateless_http`** standardmässig aktiv → horizontale Skalierung ohne

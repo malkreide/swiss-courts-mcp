@@ -1271,14 +1271,63 @@ async def app_lifespan(server: MCPServer) -> AsyncIterator[dict]:
 # ---------------------------------------------------------------------------
 
 
+def _public_url(settings: Settings) -> str:
+    """Die oeffentliche Basis-URL dieses Servers (RFC-9728-Resource-Identifier).
+
+    `MCP_RESOURCE_URL`, wenn gesetzt. Sonst die Bind-Adresse — die bei einem
+    Loopback-Bind stimmt und bei jedem anderen nicht, denn der erreichbare
+    Name ist dann ein Service- oder DNS-Name, den dieser Prozess nicht kennt.
+    Genau dieselbe Lage wie bei `allowed_hosts`, und deshalb dieselbe Antwort:
+    nicht raten, sondern warnen.
+
+    Anders als `build_transport_security` darf hier kein `None` heraus: das SDK
+    verlangt eine `resource_server_url`, und ohne sie fielen die
+    Metadaten-Route und der `resource_metadata`-Hinweis der 401 ganz weg. Eine
+    unerreichbare Adresse mit Warnung ist besser als eine fehlende Auskunft
+    ohne — ein Client sieht dann wenigstens, dass etwas nicht stimmt.
+    """
+    if settings.resource_url:
+        return settings.resource_url.rstrip("/")
+
+    base = f"http://{settings.host}:{settings.port}"
+    if settings.host not in ("127.0.0.1", "localhost", "::1"):
+        log.warning(
+            "public_resource_url_unset",
+            published=base,
+            hint="Setze MCP_RESOURCE_URL auf die oeffentliche URL dieses "
+            "Servers. Ohne sie publiziert er die Bind-Adresse als "
+            "RFC-9728-Resource-Identifier — bei 0.0.0.0 eine Adresse, die "
+            "kein Client anwaehlen kann.",
+        )
+    if not settings.oauth_issuer:
+        log.warning(
+            "oauth_issuer_unset",
+            published=base,
+            hint="Ohne MCP_OAUTH_ISSUER nennt der Server sich selbst als "
+            "Authorization Server. Setze den Issuer des IdP, der die Tokens "
+            "ausstellt.",
+        )
+    return base
+
+
 def _build_auth(settings: Settings):
     """Baut (AuthSettings, TokenVerifier) für den HTTP-Modus (SEC-009)."""
     from mcp.server.auth.settings import AuthSettings
 
     from swiss_courts_mcp.auth import JWTTokenVerifier
 
-    base = f"http://{settings.host}:{settings.port}"
+    # `base` ist nur die Rückfallebene und im Container falsch: ein
+    # 0.0.0.0-Bind ergibt `http://0.0.0.0:8000`, und genau diesen Wert
+    # publiziert das SDK dann nach RFC 9728 als Resource-Identifier. Der
+    # öffentliche Name steht in `MCP_RESOURCE_URL` — `_public_url` warnt, wenn
+    # er fehlt und aus dem Bind nicht ableitbar ist.
+    base = _public_url(settings)
     auth_settings = AuthSettings(
+        # Ohne `MCP_OAUTH_ISSUER` nennt der Server sich selbst als
+        # Authorization Server. Das ist sachlich falsch — er stellt keine
+        # Tokens aus — und stand bisher zusätzlich auf der Bind-Adresse.
+        # Mindestens die Adresse ist jetzt erreichbar; richtig wird es erst
+        # mit gesetztem `MCP_OAUTH_ISSUER`, worauf `_public_url` hinweist.
         issuer_url=settings.oauth_issuer or base,
         resource_server_url=base,
         required_scopes=settings.required_scopes or None,
@@ -1311,10 +1360,21 @@ def _build_auth(settings: Settings):
         #    in ein `aud` schreiben wuerde. True zu setzen, hiesse also, den
         #    Server fuer jede reale Konfiguration dichtzumachen.
         #
-        # Was dafuer fehlt, ist eine Einstellung fuer die *oeffentliche*
-        # Resource-URL. Solange es die nicht gibt, ist `resource_server_url`
-        # hier eine Verlegenheitsangabe, und die Publikumspruefung liegt beim
-        # Verifier — dort, wo sie nachgemessen greift.
+        # Die Einstellung fuer die oeffentliche Resource-URL gibt es jetzt
+        # (`MCP_RESOURCE_URL`), und sie aendert an dieser Entscheidung nichts:
+        # `True` pruefte `AccessToken.resource` gegen `resource_server_url`,
+        # und `AccessToken.resource` ist bei diesem Server `oauth_audience` —
+        # also dasselbe Feld, das der Verifier schon unbedingt prueft. Eine
+        # zweite Pruefung derselben Tatsache sichert nichts zusaetzlich und
+        # scheitert, sobald das Publikum nicht woertlich die Resource-URL ist.
+        #
+        # `MCP_RESOURCE_URL` behebt etwas anderes, und das war der eigentliche
+        # Befund: was der Server PUBLIZIERT. Nachgemessen mit 0.0.0.0-Bind gab
+        # `/.well-known/oauth-protected-resource`
+        # `{"resource": "http://0.0.0.0:8000", "authorization_servers": [...]}`
+        # heraus, und die 401 nannte dieselbe Adresse als
+        # `resource_metadata`. Ein Client, der RFC 9728 folgt, landete auf
+        # einer nicht anwaehlbaren Adresse.
         validate_token_resource=False,
     )
     return auth_settings, JWTTokenVerifier(settings)

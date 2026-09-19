@@ -8,12 +8,13 @@ import warnings
 import pytest
 from mcp.shared.exceptions import MCPDeprecationWarning
 from starlette.testclient import TestClient
+from structlog.testing import capture_logs
 
 from swiss_courts_mcp import api_client
 from swiss_courts_mcp.api_client import EgressNotAllowedError, assert_host_allowed
 from swiss_courts_mcp.auth import AuthConfigError, JWTTokenVerifier, issue_dev_token
 from swiss_courts_mcp.config import Settings
-from swiss_courts_mcp.server import _build_auth, build_http_app
+from swiss_courts_mcp.server import _build_auth, _public_url, build_http_app
 
 # --- SEC-021 / SEC-004: Egress-Allow-List ---
 
@@ -272,3 +273,158 @@ def test_ein_token_fuer_fremde_resource_scheitert_am_stack():
     fremd = _token_for("https://ganz-anderer-dienst.example", settings.auth_secret)
 
     assert _initialize_with_bearer(fremd) == 401
+
+
+# --- SEC-009: die oeffentliche Resource-URL (RFC 9728) ---
+
+
+def _pinned(**kw) -> Settings:
+    """Container-Szenario: 0.0.0.0-Bind mit Host-Allow-List, wie im Dockerfile."""
+    return _settings(
+        host="0.0.0.0",  # noqa: S104 — Container
+        port=8000,
+        allowed_hosts=["mcp.example.ch"],
+        **kw,
+    )
+
+
+def _published(settings: Settings) -> tuple[dict, str]:
+    """Was der Server als Resource-Identifier herausgibt.
+
+    Beides zusammen, weil beides aus `resource_server_url` folgt und ein Test
+    nur eines davon pruefen koennte, waehrend das andere abdriftet: das
+    Metadaten-Dokument nach RFC 9728 und der `resource_metadata`-Hinweis, mit
+    dem die 401 einen Client dorthin schickt.
+    """
+    with TestClient(build_http_app(settings)) as client:
+        metadata = client.get(
+            "/.well-known/oauth-protected-resource",
+            headers={"Host": "mcp.example.ch"},
+        )
+        unauthorized = client.post(
+            "/mcp",
+            headers={
+                "Host": "mcp.example.ch",
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+        )
+
+    assert metadata.status_code == 200
+    assert unauthorized.status_code == 401
+    return metadata.json(), unauthorized.headers["www-authenticate"]
+
+
+def test_die_resource_url_wird_publiziert():
+    """Der tragende Fall: `MCP_RESOURCE_URL` landet dort, wo Clients suchen."""
+    document, www_authenticate = _published(_pinned(resource_url="https://mcp.example.ch"))
+
+    assert document["resource"] == "https://mcp.example.ch"
+    assert "https://mcp.example.ch/.well-known/oauth-protected-resource" in www_authenticate
+
+
+def test_ohne_resource_url_steht_die_bind_adresse_da():
+    """Negativkontrolle — und der gemessene Befund, der die Einstellung ausloeste.
+
+    Ohne die Variable publiziert der Server die Bind-Adresse. Im Container ist
+    das `http://0.0.0.0:8000`, also der Ort zum Token-Holen, den kein Client
+    anwaehlen kann. Ohne diesen Test waere der Test darueber auch dann gruen,
+    wenn `resource_url` nie im `AuthSettings` ankaeme — die Bind-Adresse
+    enthaelt denselben Host, sobald man sie zufaellig gleich waehlt.
+    """
+    document, www_authenticate = _published(_pinned())
+
+    assert document["resource"] == "http://0.0.0.0:8000"
+    assert "http://0.0.0.0:8000" in www_authenticate
+
+
+def test_ein_abschliessender_schraegstrich_wird_abgeschnitten():
+    """RFC 8414/9207 vergleichen Issuer und Resource als exakte Zeichenketten.
+
+    Ein versehentliches `https://mcp.example.ch/` wuerde sonst als anderer
+    Identifier gelten als `https://mcp.example.ch` — und `AuthSettings` haelt
+    den Pfad ausdruecklich fest (`url_preserve_empty_path`), schneidet also
+    nichts von sich aus ab.
+    """
+    document, _ = _published(_pinned(resource_url="https://mcp.example.ch/"))
+
+    assert document["resource"] == "https://mcp.example.ch"
+
+
+def test_der_issuer_bleibt_der_idp_wenn_gesetzt():
+    """`authorization_servers` nennt den IdP, nicht diesen Server.
+
+    Ohne `MCP_OAUTH_ISSUER` traegt der Server sich selbst ein — sachlich
+    falsch, er stellt keine Tokens aus. Der Test haelt fest, dass ein gesetzter
+    Issuer durchreicht und die Resource-URL davon unberuehrt bleibt; beide
+    Felder kommen aus demselben `AuthSettings` und wurden bisher aus derselben
+    Quelle gespeist.
+    """
+    document, _ = _published(
+        _pinned(resource_url="https://mcp.example.ch", oauth_issuer="https://idp.example.ch")
+    )
+
+    assert document["authorization_servers"] == ["https://idp.example.ch"]
+    assert document["resource"] == "https://mcp.example.ch"
+
+
+def test_der_server_warnt_wenn_die_resource_url_fehlt():
+    """Nicht raten, sondern warnen — wie bei `allowed_hosts`.
+
+    Der erreichbare Name steht nicht in der Bind-Adresse. Statt ihn zu erfinden
+    nennt der Server den publizierten Wert und die Variable, die ihn richtig
+    stellt.
+    """
+    with capture_logs() as entries:
+        _public_url(_pinned())
+
+    events = {entry["event"] for entry in entries}
+    assert "public_resource_url_unset" in events
+    assert "oauth_issuer_unset" in events
+
+
+def test_bei_loopback_warnt_er_nicht():
+    """Gegenprobe zur Warnung: bei einem Loopback-Bind stimmt die Bind-Adresse.
+
+    Ohne diesen Fall waere der Test darueber auch mit einer Warnung gruen, die
+    immer feuert — und eine Warnung, die immer kommt, wird ueberlesen.
+    """
+    with capture_logs() as entries:
+        result = _public_url(_settings(host="127.0.0.1", port=8000, oauth_issuer="https://idp.x"))
+
+    assert result == "http://127.0.0.1:8000"
+    assert [entry["event"] for entry in entries] == []
+
+
+def test_die_resource_url_kommt_aus_dem_environment(monkeypatch):
+    """Die Verdrahtung in `from_env`, und sie fehlte zuerst.
+
+    Die Gegenprobe deckte es auf: nimmt man
+    `resource_url=os.environ.get("MCP_RESOURCE_URL")` aus `Settings.from_env`
+    heraus, bleibt die ganze Suite gruen — alle Tests oben bauen ihr `Settings`
+    direkt und kommen an der Environment-Auswertung vorbei. Eine Einstellung,
+    die niemand ueber ihre dokumentierte Variable setzen kann, ist keine
+    Einstellung.
+    """
+    monkeypatch.setenv("MCP_RESOURCE_URL", "https://mcp.example.ch")
+
+    assert Settings.from_env().resource_url == "https://mcp.example.ch"
+
+
+def test_ohne_die_variable_bleibt_die_resource_url_leer(monkeypatch):
+    """Gegenstueck dazu: kein stiller Default, der die Warnung aushebelt."""
+    monkeypatch.delenv("MCP_RESOURCE_URL", raising=False)
+
+    assert Settings.from_env().resource_url is None
+
+
+def test_die_gesetzte_url_schlaegt_den_bind():
+    """`_public_url` bevorzugt die Einstellung und warnt dann nicht."""
+    with capture_logs() as entries:
+        result = _public_url(
+            _pinned(resource_url="https://mcp.example.ch", oauth_issuer="https://i.x")
+        )
+
+    assert result == "https://mcp.example.ch"
+    assert [entry["event"] for entry in entries] == []

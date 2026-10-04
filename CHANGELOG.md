@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Geändert
+
+- **Roter Live-Lauf sagt, ob die Quelle überhaupt geantwortet hat.**
+  `scripts/classify_live_run.py` zählt im Grund (und damit im automatisch
+  eröffneten Issue) die Fehlschläge, die auf einen Transportfehler gehen
+  (`httpx.ConnectTimeout`, `ReadTimeout`, `ConnectError` — je aufgezeichnet),
+  und weist bei einem gemischten Lauf auf den inhaltlichen
+  Rest hin. Anlass: Die Issues vom 19.9. und 2.10.2026 meldeten je «2
+  Fehlschläge»; beide Male hatte die Quelle nur nicht geantwortet, und das
+  zeigte erst das Nachprüfen. Der Zustand bleibt unverändert — auch ein reiner
+  Ausfall ist `finding`, macht den Job rot und öffnet das Issue.
+
 ## [0.5.0] - 2026-09-19
 
 Minor, nicht Patch: `MCP_OAUTH_AUDIENCE` und `MCP_OAUTH_ISSUER` sind jetzt

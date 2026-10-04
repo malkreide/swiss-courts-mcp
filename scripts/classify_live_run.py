@@ -38,6 +38,21 @@ uebersprungen» dasselbe. Das XML zaehlt Tests, Fehler, Fehlschlaege und
 Uebersprungene getrennt, also wird es gelesen. Fehlt es, ist pytest gar nicht
 bis zum Schreiben gekommen — auch das ist `unknown`, und zwar mit Grund.
 
+HAT DIE QUELLE UEBERHAUPT GEANTWORTET?
+-------------------------------------
+`finding` umfasst zweierlei: einen geaenderten Vertrag mit der Quelle und eine
+Quelle, die gerade aus ist. Beides gehoert gesehen, nur das Erste gehoert
+gefixt — und der Zaehler `2 Fehlschlaege` sagt nicht, welches. Am 19.9.2026
+(Zenodo, `httpx.ReadTimeout`) und am 2.10.2026 (entscheidsuche.ch,
+`httpx.ConnectTimeout`) ging je ein Issue auf, und beide Male zeigte erst das
+Nachpruefen, dass die Quelle schlicht nicht geantwortet hatte; am Folgetag war
+der Lauf von selbst gruen.
+
+Der Grund nennt deshalb, wie viele der Fehlschlaege Transportfehler sind. Am
+Zustand aendert das nichts: auch ein reiner Ausfall bleibt `finding`, macht
+den Job rot und oeffnet das Issue. Ein laengerer Ausfall soll nicht leiser
+werden, nur seine Diagnose soll im Issue stehen statt im Log.
+
 Aufruf:
     python scripts/classify_live_run.py live-report.xml
     python scripts/classify_live_run.py live-report.xml --pytest-exit 1
@@ -51,12 +66,54 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import xml.etree.ElementTree as ET
+from collections import Counter
 from pathlib import Path
 
 CLEAR = "clear"
 FINDING = "finding"
 UNKNOWN = "unknown"
+
+# Ausnahmen, bei denen die Quelle nicht oder nicht rechtzeitig geantwortet hat.
+# Bewusst eng: `RemoteProtocolError` oder `ReadError` heissen, dass eine
+# Verbindung stand und etwas zurueckkam — darueber laesst sich nicht sagen, die
+# Quelle habe geschwiegen. Ein HTTP-Status ist ohnehin eine Antwort. Und nur,
+# was aufgezeichnet ist: `WriteTimeout` oder `PoolTimeout` gehoerten dem Sinn
+# nach dazu, sind aber nie beobachtet worden; ein Eintrag ohne Aufzeichnung
+# liesse sich entfernen, ohne dass ein Test es merkt.
+TRANSPORTFEHLER = frozenset({"httpx.ConnectError", "httpx.ConnectTimeout", "httpx.ReadTimeout"})
+
+# pytest schreibt den Ausnahmetyp an den Anfang von `message`: `httpx.ReadTimeout:
+# timed out` bei einem Fehlschlag, `failed on setup with "httpx.ConnectError:
+# ..."` bei einem Fehler in einer Fixture. Beides aufgezeichnet, siehe
+# tests/fixtures/junit/gemischt.xml.
+_AUSNAHMETYP = re.compile(r'^(?:failed on \w+ with ")?([A-Za-z_][\w.]*)')
+
+
+def _ausnahmetyp(element: ET.Element) -> str:
+    treffer = _AUSNAHMETYP.match(element.get("message") or "")
+    return treffer.group(1) if treffer else ""
+
+
+def _transport_anteil(suites: list[ET.Element]) -> str:
+    """Zusatz zum Grund: wie viele Fehlschlaege die Quelle gar nicht erreicht haben."""
+    befunde = [el for s in suites for el in s.iter() if el.tag in ("failure", "error")]
+    arten = Counter(t for t in map(_ausnahmetyp, befunde) if t in TRANSPORTFEHLER)
+    n = sum(arten.values())
+    if not n:
+        return ""
+    liste = ", ".join(f"{k} x{v}" for k, v in sorted(arten.items()))
+    if n == len(befunde):
+        return (
+            f" — alle {n} durch Transportfehler ({liste}): Die Quelle hat nicht "
+            "geantwortet. Ein geaenderter Vertrag ist damit weder belegt noch "
+            "ausgeschlossen"
+        )
+    return (
+        f" — davon {n} durch Transportfehler ({liste}); die uebrigen "
+        f"{len(befunde) - n} sind inhaltlich und zuerst anzusehen"
+    )
 
 
 def classify(report: Path, pytest_exit: int | None = None) -> tuple[str, str]:
@@ -89,7 +146,8 @@ def classify(report: Path, pytest_exit: int | None = None) -> tuple[str, str]:
     if failures or errors:
         return (
             FINDING,
-            f"{failures} Fehlschlag/Fehlschlaege und {errors} Fehler von {tests} Test(s)",
+            f"{failures} Fehlschlag/Fehlschlaege und {errors} Fehler von {tests} Test(s)"
+            + _transport_anteil(suites),
         )
     if tests == 0:
         return (

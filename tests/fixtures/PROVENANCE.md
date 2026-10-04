@@ -168,3 +168,31 @@ Zähler `tests` / `failures` / `errors` / `skipped` als Attribute am
 - **Lauf:** nichts eingesammelt (Marken-Filter greift auf alles)
 - **Zähler:** tests=0 → `unknown`
 - **SHA-256:** `834a748a49f5f0be090deb421081c7f8b83fddaa04f4ffd67525ff4f0e4adf4f`
+
+## `junit/nur_transport.xml`
+
+- **Aufgezeichnet:** 2026-10-04, pytest 9.1.1
+- **Lauf:** die echte Live-Suite (`pytest tests/ -m live`) mit
+  `HTTPS_PROXY=http://10.255.255.1:3128`, einer nicht routbaren Adresse — die
+  Quelle ist unerreichbar, jede Verbindung läuft nach `REQUEST_TIMEOUT` in den
+  Timeout. Das ist die Form des roten geplanten Laufs vom 2.10.2026, nur mit
+  allen vier Tests statt zwei.
+- **Beobachtet:** `message="httpx.ConnectTimeout"`, ohne Doppelpunkt und Text
+- **Zähler:** tests=4, failures=4, errors=0, skipped=0 → `finding`, Grund mit
+  «alle 4 durch Transportfehler»
+- **SHA-256:** `5e2563ca0f5cd1a44115770a07f0ec0146938b8246090e5993e41842c4065a16`
+
+## `junit/gemischt.xml`
+
+- **Aufgezeichnet:** 2026-10-04, pytest 9.1.1
+- **Lauf:** Wegwerf-Testdatei mit fünf Tests: Verbindung abgelehnt
+  (`127.0.0.1:9`), Antwort bleibt aus (Socket im Backlog, niemand antwortet —
+  die Form vom 19.9.2026), ein inhaltlicher Fehlschlag (`assert "hits" in
+  {"total": 0}`), ein grüner Test und eine Fixture, deren Verbindung schon
+  beim Setup scheitert.
+- **Beobachtet:** `message="httpx.ConnectError: [Errno 111] …"`,
+  `message="httpx.ReadTimeout: timed out"` und für den Setup-Fehler
+  `message='failed on setup with "httpx.ConnectError: …"'`
+- **Zähler:** tests=5, failures=3, errors=1, skipped=0 → `finding`, Grund mit
+  «davon 3 durch Transportfehler … die uebrigen 1 sind inhaltlich»
+- **SHA-256:** `22e154bcd42c5de994c7a1d7767bbb37898f369e308c3e7849d725210a5b0be2`

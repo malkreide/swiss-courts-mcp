@@ -128,8 +128,9 @@ class AufgezeichneteReportsTest(unittest.TestCase):
     geplante Lauf in der CI danebengreift.
 
     Die Dateien in `tests/fixtures/junit/` sind am 16.08.2026 mit pytest 9.1.1
-    aufgezeichnet — je eine Form, die die Einordnung unterscheidet. Herkunft
-    und SHA-256 stehen in `tests/fixtures/PROVENANCE.md`.
+    aufgezeichnet — je eine Form, die die Einordnung unterscheidet;
+    `nur_transport.xml` und `gemischt.xml` am 04.10.2026, ebenfalls mit pytest
+    9.1.1. Herkunft und SHA-256 stehen in `tests/fixtures/PROVENANCE.md`.
     """
 
     def _classify(self, name: str) -> tuple[str, str]:
@@ -160,6 +161,39 @@ class AufgezeichneteReportsTest(unittest.TestCase):
         self.assertEqual(state, clr.UNKNOWN)
         self.assertIn("null Tests", reason)
 
+    def test_fehlschlag_ohne_transportfehler_bleibt_beim_zaehler(self):
+        """Gegenrichtung: ein inhaltlicher Fehlschlag bekommt keine Ausfall-Diagnose."""
+        for name in ("fehlschlag.xml", "fehler.xml"):
+            with self.subTest(name=name):
+                _, reason = self._classify(name)
+                self.assertNotIn("Transportfehler", reason)
+
+    def test_reiner_ausfall_bleibt_finding_und_sagt_es(self):
+        """Die Form vom 2.10.2026: die echte Live-Suite, die Quelle unerreichbar.
+
+        Bleibt `finding` — ein Ausfall soll das Issue weiter oeffnen. Nur steht
+        jetzt im Grund, dass die Quelle gar nicht geantwortet hat.
+        """
+        state, reason = self._classify("nur_transport.xml")
+        self.assertEqual(state, clr.FINDING)
+        self.assertIn("alle 4 durch Transportfehler", reason)
+        self.assertIn("httpx.ConnectTimeout x4", reason)
+        self.assertIn("nicht geantwortet", reason)
+
+    def test_gemischter_lauf_zeigt_auf_den_inhaltlichen_rest(self):
+        """Ein Vertragsbruch darf hinter drei Timeouts nicht verschwinden.
+
+        Gezaehlt wird auch der Fehler aus der Fixture (`failed on setup with
+        "httpx.ConnectError: ..."`) und der `ReadTimeout` vom 19.9.2026.
+        """
+        state, reason = self._classify("gemischt.xml")
+        self.assertEqual(state, clr.FINDING)
+        self.assertIn("davon 3 durch Transportfehler", reason)
+        self.assertIn("httpx.ConnectError x2", reason)
+        self.assertIn("httpx.ReadTimeout x1", reason)
+        self.assertIn("die uebrigen 1 sind inhaltlich", reason)
+        self.assertNotIn("nicht geantwortet", reason)
+
     def test_jede_aufzeichnung_steht_in_der_provenance(self):
         """Sonst waechst der Ordner und der Nachweis bleibt zurueck."""
         text = (JUNIT.parent / "PROVENANCE.md").read_text(encoding="utf-8")
@@ -174,6 +208,8 @@ class AufgezeichneteReportsTest(unittest.TestCase):
             "fehler.xml",
             "alle_uebersprungen.xml",
             "null_tests.xml",
+            "nur_transport.xml",
+            "gemischt.xml",
         }
         vorhanden = {p.name for p in JUNIT.iterdir()}
         self.assertEqual(vorhanden, gefahren)

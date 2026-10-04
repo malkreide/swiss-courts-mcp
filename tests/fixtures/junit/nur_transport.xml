@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="4" time="121.568" timestamp="2026-10-04T10:56:14.825359+00:00" hostname="vm"><testcase classname="tests.test_api_client" name="test_live_search" time="30.067"><failure message="httpx.ConnectTimeout">/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:101: in map_httpcore_exceptions
+    yield
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:394: in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection_pool.py:256: in handle_async_request
+    raise exc from None
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection_pool.py:236: in handle_async_request
+    response = await connection.handle_async_request(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/http_proxy.py:288: in handle_async_request
+    connect_response = await self._connection.handle_async_request(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:101: in handle_async_request
+    raise exc
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:78: in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:124: in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_backends/auto.py:31: in connect_tcp
+    return await self._backend.connect_tcp(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_backends/anyio.py:113: in connect_tcp
+    with map_exceptions(exc_map):
+/usr/lib/python3.11/contextlib.py:158: in __exit__
+    self.gen.throw(typ, value, traceback)
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_exceptions.py:14: in map_exceptions
+    raise to_exc(exc) from exc
+E   httpcore.ConnectTimeout
+
+The above exception was the direct cause of the following exception:
+tests/test_api_client.py:383: in test_live_search
+    last_result = await search_decisions(body)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/swiss_courts_mcp/api_client.py:442: in search_decisions
+    response = await http.post(SEARCH_URL, json=body)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1859: in post
+    return await self.request(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1629: in send
+    response = await self._send_handling_auth(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:393: in handle_async_request
+    with map_httpcore_exceptions():
+/usr/lib/python3.11/contextlib.py:158: in __exit__
+    self.gen.throw(typ, value, traceback)
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:118: in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+E   httpx.ConnectTimeout</failure></testcase><testcase classname="tests.test_api_client" name="test_live_taxonomy" time="30.075"><failure message="httpx.ConnectTimeout">/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:101: in map_httpcore_exceptions
+    yield
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:394: in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection_pool.py:256: in handle_async_request
+    raise exc from None
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection_pool.py:236: in handle_async_request
+    response = await connection.handle_async_request(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/http_proxy.py:288: in handle_async_request
+    connect_response = await self._connection.handle_async_request(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:101: in handle_async_request
+    raise exc
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:78: in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:124: in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_backends/auto.py:31: in connect_tcp
+    return await self._backend.connect_tcp(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_backends/anyio.py:113: in connect_tcp
+    with map_exceptions(exc_map):
+/usr/lib/python3.11/contextlib.py:158: in __exit__
+    self.gen.throw(typ, value, traceback)
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_exceptions.py:14: in map_exceptions
+    raise to_exc(exc) from exc
+E   httpcore.ConnectTimeout
+
+The above exception was the direct cause of the following exception:
+tests/test_api_client.py:407: in test_live_taxonomy
+    taxonomy = await get_court_taxonomy()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/swiss_courts_mcp/api_client.py:464: in get_court_taxonomy
+    response = await http.get(FACETS_URL)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1768: in get
+    return await self.request(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1629: in send
+    response = await self._send_handling_auth(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:393: in handle_async_request
+    with map_httpcore_exceptions():
+/usr/lib/python3.11/contextlib.py:158: in __exit__
+    self.gen.throw(typ, value, traceback)
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:118: in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+E   httpx.ConnectTimeout</failure></testcase><testcase classname="tests.test_fallback" name="test_live_zenodo_record_metadata" time="30.064"><failure message="httpx.ConnectTimeout">/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:101: in map_httpcore_exceptions
+    yield
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:394: in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection_pool.py:256: in handle_async_request
+    raise exc from None
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection_pool.py:236: in handle_async_request
+    response = await connection.handle_async_request(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/http_proxy.py:288: in handle_async_request
+    connect_response = await self._connection.handle_async_request(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:101: in handle_async_request
+    raise exc
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:78: in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:124: in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_backends/auto.py:31: in connect_tcp
+    return await self._backend.connect_tcp(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_backends/anyio.py:113: in connect_tcp
+    with map_exceptions(exc_map):
+/usr/lib/python3.11/contextlib.py:158: in __exit__
+    self.gen.throw(typ, value, traceback)
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_exceptions.py:14: in map_exceptions
+    raise to_exc(exc) from exc
+E   httpcore.ConnectTimeout
+
+The above exception was the direct cause of the following exception:
+tests/test_fallback.py:314: in test_live_zenodo_record_metadata
+    data = await fallback._get_json(
+src/swiss_courts_mcp/fallback.py:640: in _get_json
+    resp = await http.get(url, follow_redirects=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1768: in get
+    return await self.request(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1629: in send
+    response = await self._send_handling_auth(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:393: in handle_async_request
+    with map_httpcore_exceptions():
+/usr/lib/python3.11/contextlib.py:158: in __exit__
+    self.gen.throw(typ, value, traceback)
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:118: in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+E   httpx.ConnectTimeout</failure></testcase><testcase classname="tests.test_fallback" name="test_live_zenodo_latest_version" time="30.076"><failure message="httpx.ConnectTimeout">/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:101: in map_httpcore_exceptions
+    yield
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:394: in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection_pool.py:256: in handle_async_request
+    raise exc from None
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection_pool.py:236: in handle_async_request
+    response = await connection.handle_async_request(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/http_proxy.py:288: in handle_async_request
+    connect_response = await self._connection.handle_async_request(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:101: in handle_async_request
+    raise exc
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:78: in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_async/connection.py:124: in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_backends/auto.py:31: in connect_tcp
+    return await self._backend.connect_tcp(
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_backends/anyio.py:113: in connect_tcp
+    with map_exceptions(exc_map):
+/usr/lib/python3.11/contextlib.py:158: in __exit__
+    self.gen.throw(typ, value, traceback)
+/opt/venv-rec/lib/python3.11/site-packages/httpcore/_exceptions.py:14: in map_exceptions
+    raise to_exc(exc) from exc
+E   httpcore.ConnectTimeout
+
+The above exception was the direct cause of the following exception:
+tests/test_fallback.py:324: in test_live_zenodo_latest_version
+    info = await fallback.latest_version(client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/swiss_courts_mcp/fallback.py:802: in latest_version
+    data = await _get_json(url, client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/swiss_courts_mcp/fallback.py:640: in _get_json
+    resp = await http.get(url, follow_redirects=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1768: in get
+    return await self.request(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1629: in send
+    response = await self._send_handling_auth(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:393: in handle_async_request
+    with map_httpcore_exceptions():
+/usr/lib/python3.11/contextlib.py:158: in __exit__
+    self.gen.throw(typ, value, traceback)
+/opt/venv-rec/lib/python3.11/site-packages/httpx/_transports/default.py:118: in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+E   httpx.ConnectTimeout</failure></testcase></testsuite></testsuites>

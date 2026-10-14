@@ -100,7 +100,7 @@ The server is in **Phase 1 (read-only)** — see [ROADMAP.md](ROADMAP.md). Writi
 **Cadence:** daily at 04:00 UTC, plus on demand via *Actions → Live API Tests → Run
 workflow*. See [`.github/workflows/live.yml`](.github/workflows/live.yml).
 
-**Who sees it:** A red run opens an issue labelled `upstream` and the stable title “Live-Tests gegen entscheidsuche.ch rot (<Datum>)”. A second red run recognises the open issue by its title prefix and appends to that same thread rather than opening a second one. Once the suite is green again, the issue closes itself.
+**Who sees it:** A red run opens an issue labelled `upstream` and the stable title “Live-Tests rot (<Datum>)” — without a source name, because the suite also checks the Zenodo fallback. A second red run recognises the open issue by its title prefix (including the earlier “Live-Tests gegen entscheidsuche.ch rot”) and appends to that same thread rather than opening a second one. Once the suite is green again, the issue closes itself.
 
 **Three answers, not two.** `scripts/classify_live_run.py` reads the JUnit XML rather than
 the exit code and separates `clear` (ran, green), `finding` (ran, something

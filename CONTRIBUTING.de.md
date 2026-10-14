@@ -101,7 +101,7 @@ Der Server ist in **Phase 1 (read-only)** — siehe [ROADMAP.md](ROADMAP.md). Sc
 **Kadenz:** täglich um 04:00 UTC, dazu jederzeit von Hand über *Actions → Live API Tests → Run
 workflow*. Siehe [`.github/workflows/live.yml`](.github/workflows/live.yml).
 
-**Wer es sieht:** Ein roter Lauf öffnet ein Issue mit dem Label `upstream` und dem stabilen Titel «Live-Tests gegen entscheidsuche.ch rot (<Datum>)». Ein zweiter roter Lauf erkennt das offene Issue am Titelanfang und hängt sich an denselben Thread, statt ein zweites aufzumachen. Wird die Suite wieder grün, schliesst sich das Issue selbst.
+**Wer es sieht:** Ein roter Lauf öffnet ein Issue mit dem Label `upstream` und dem stabilen Titel «Live-Tests rot (<Datum>)» — ohne Quellennamen, weil die Suite auch die Ausweichquelle Zenodo prüft. Ein zweiter roter Lauf erkennt das offene Issue am Titelanfang (auch am früheren «Live-Tests gegen entscheidsuche.ch rot») und hängt sich an denselben Thread, statt ein zweites aufzumachen. Wird die Suite wieder grün, schliesst sich das Issue selbst.
 
 **Drei Antworten, nicht zwei.** `scripts/classify_live_run.py` liest das JUnit-XML statt des
 Exit-Codes und unterscheidet: `clear` (gelaufen, grün), `finding` (gelaufen,

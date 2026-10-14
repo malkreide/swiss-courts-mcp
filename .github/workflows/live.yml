@@ -86,7 +86,17 @@ jobs:
             // Stabiles Praefix: Damit ein zweiter roter Lauf den bestehenden
             // Thread verlaengert statt einen zweiten aufzumachen. Zehn Issues
             // zur selben Sache liest niemand.
-            const PREFIX = 'Live-Tests gegen entscheidsuche.ch rot';
+            //
+            // Ohne Quellennamen: Die Suite prueft entscheidsuche.ch UND die
+            // Ausweichquelle Zenodo. Am 12.10.2026 war nur Zenodo rot, und das
+            // Issue hiess trotzdem «gegen entscheidsuche.ch». Welche Quelle
+            // betroffen ist, steht in der Einordnung und in der pytest-Ausgabe.
+            const PREFIX = 'Live-Tests rot';
+            // Der fruehere Titelanfang wird weiter erkannt, damit ein noch
+            // offenes Issue aus der Zeit davor verlaengert und geschlossen wird,
+            // statt neben einem zweiten liegen zu bleiben. Angelegt wird nur
+            // noch mit PREFIX.
+            const PREFIXE = [PREFIX, 'Live-Tests gegen entscheidsuche.ch rot'];
             const LABEL = 'upstream';
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
                         `/actions/runs/${context.runId}`;
@@ -100,12 +110,12 @@ jobs:
               ...context.repo, state: 'open', labels: LABEL, per_page: 100,
             });
             const open = issues.data.find(
-              (i) => !i.pull_request && i.title.startsWith(PREFIX)
+              (i) => !i.pull_request && PREFIXE.some((p) => i.title.startsWith(p))
             );
 
             if (state === 'unknown') {
               // Weder oeffnen noch schliessen. Der Lauf hat nichts ueber den
-              // Vertrag mit entscheidsuche.ch festgestellt, und ein Issue, das auf so
+              // Vertrag mit den Quellen festgestellt, und ein Issue, das auf so
               // einen Lauf hin zugeht, behauptet einen Vergleich, den es nicht
               // gab. Sichtbar wird es ueber den roten Job.
               core.warning(`Live-Suite nicht ausgewertet: ${reason}. Am Issue wurde nichts geaendert.`);
@@ -114,7 +124,8 @@ jobs:
 
             if (state === 'finding') {
               const body = [
-                'Die geplante Live-Suite gegen `entscheidsuche.ch` ist rot.',
+                'Die geplante Live-Suite gegen die Quellen des Servers',
+                '(`entscheidsuche.ch` und die Ausweichquelle Zenodo) ist rot.',
                 '',
                 `Lauf: ${run}`,
                 `Einordnung: ${reason}`,

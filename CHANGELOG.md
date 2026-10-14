@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Fehlschläge»; beide Male hatte die Quelle nur nicht geantwortet, und das
   zeigte erst das Nachprüfen. Der Zustand bleibt unverändert — auch ein reiner
   Ausfall ist `finding`, macht den Job rot und öffnet das Issue.
+- **Issue-Titel des Live-Laufs ohne Quellennamen.** Das automatisch eröffnete
+  Issue heisst jetzt «Live-Tests rot (<Datum>)» statt «Live-Tests gegen
+  entscheidsuche.ch rot (<Datum>)»: Die Suite prüft auch die Ausweichquelle
+  Zenodo, und am 12.10.2026 war nur Zenodo rot (Issue #93). Ein noch offenes
+  Issue mit dem früheren Titel wird weiterhin erkannt, verlängert und
+  geschlossen.
 
 ## [0.5.0] - 2026-09-19
 

@@ -102,6 +102,8 @@ workflow*. See [`.github/workflows/live.yml`](.github/workflows/live.yml).
 
 **Who sees it:** A red run opens an issue labelled `upstream` and the stable title “Live-Tests rot (<Datum>)” — without a source name, because the suite also checks the Zenodo fallback. A second red run recognises the open issue by its title prefix (including the earlier “Live-Tests gegen entscheidsuche.ch rot”) and appends to that same thread rather than opening a second one. Once the suite is green again, the issue closes itself.
 
+**One retry, only after a pure outage.** If every failure in a run is a transport error (`httpx.ConnectError`, `ConnectTimeout`, `ReadTimeout`), the workflow waits ten minutes and runs the suite once more; only that second attempt decides the issue and the job colour, and its reason carries the first attempt's. A run with any content failure is reported immediately, without a retry. Background: 4 of 35 scheduled runs between 19.9. and 23.10.2026 were red purely from transport errors and turned green by themselves the next day. The ten minutes are a setting, not a measurement.
+
 **Three answers, not two.** `scripts/classify_live_run.py` reads the JUnit XML rather than
 the exit code and separates `clear` (ran, green), `finding` (ran, something
 fell) and `unknown` (did not run — install failed, nothing collected,

@@ -29,7 +29,10 @@ jobs:
   live:
     name: Live-Suite gegen entscheidsuche.ch
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 Minuten reichten fuer einen Lauf. Mit der Wiederholung unten kommen
+    # zehn Minuten Pause und ein zweiter Lauf dazu; die roten Laeufe vom
+    # 19.9. bis 23.10.2026 brauchten fuer die Suite je 64 bis 83 Sekunden.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v7
@@ -52,16 +55,53 @@ jobs:
           PYTHONPATH=src pytest tests/ -m live -v --junitxml=live-report.xml 2>&1 | tee live-output.txt  # gate
           echo "pytest_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
+      # Vier rote Laeufe vom 19.9. bis 23.10.2026 (#81, #91, #93, #95) gingen
+      # allein auf Transportfehler, und jedes Mal war der naechste Lauf von
+      # selbst gruen. Ein Issue, das sich immer selbst schliesst, liest
+      # irgendwann niemand mehr. Deshalb: Ist JEDER Fehlschlag ein
+      # Transportfehler, wird die Suite nach einer Pause einmal wiederholt.
+      # Ein gemischter oder inhaltlicher Fehlschlag geht ohne Umweg weiter;
+      # die Entscheidung trifft das Skript, nicht dieser Block.
+      - name: Nur Transportfehler?
+        id: erster
+        run: python scripts/classify_live_run.py live-report.xml
+
+      # Die zehn Minuten sind gesetzt, nicht gemessen: Wie lange die Aussetzer
+      # dauerten, gibt keiner der vier Laeufe her, nur dass sie keinen Tag
+      # hielten. Was die Pause ueberdauert, ist im zweiten Versuch wieder ein
+      # Befund — ein laengerer Ausfall bleibt laut.
+      - name: Wiederholung nach reinem Transportausfall
+        id: zweiter
+        if: steps.erster.outputs.wiederholen == 'true'
+        continue-on-error: true
+        env:
+          ERSTER_GRUND: ${{ steps.erster.outputs.reason }}
+        run: |
+          echo "::warning::Erster Versuch nur an Transportfehlern gescheitert, Wiederholung in 10 Minuten: $ERSTER_GRUND"
+          mv live-report.xml live-report-1.xml
+          mv live-output.txt live-output-1.txt
+          sleep 600
+          set +e
+          PYTHONPATH=src pytest tests/ -m live -v --junitxml=live-report.xml 2>&1 | tee live-output.txt
+          echo "pytest_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
       # `if: failure()` kennt rot und nicht rot. Ein Live-Lauf hat drei
       # Antworten, und die dritte zaehlt: Ein gescheitertes `pip install`, ein
       # Timeout oder eine umbenannte Marke sind NICHT dasselbe wie ein
       # gebrochener Vertrag mit der Quelle. Und ein Lauf, in dem jeder Test
       # uebersprungen wurde, sieht unter jedem Exit-Code-Check aus wie Erfolg.
+      #
+      # Nach einer Wiederholung zaehlt der zweite Versuch; der erste haengt
+      # ueber `--vorlauf` am Grund. Sonst saehe ein gruener zweiter Versuch
+      # aus wie ein gewoehnlicher gruener Lauf.
       - name: Ergebnis einordnen
         id: verdict
         run: |
+          VORLAUF=()
+          if [ -f live-report-1.xml ]; then VORLAUF=(--vorlauf live-report-1.xml); fi
           python scripts/classify_live_run.py live-report.xml \
-            --pytest-exit "${{ steps.suite.outputs.pytest_exit }}"
+            --pytest-exit "${{ steps.zweiter.outputs.pytest_exit || steps.suite.outputs.pytest_exit }}" \
+            "${VORLAUF[@]}"
           {
             echo "tail<<PYTEST_TAIL"
             tail -n 40 live-output.txt || true

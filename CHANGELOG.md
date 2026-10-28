@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Geändert
 
+- **Live-Lauf wiederholt sich einmal nach einem reinen Transportausfall.**
+  Scheitert die geplante Live-Suite ausschliesslich an Transportfehlern,
+  fährt `live.yml` sie nach zehn Minuten Pause ein zweites Mal; erst dieser
+  zweite Versuch wird eingeordnet und entscheidet über Issue und Jobfarbe.
+  Ein gemischter oder inhaltlicher Fehlschlag geht ohne Wiederholung sofort
+  raus, und ein Ausfall, der die Pause überdauert, bleibt `finding`. Ob
+  wiederholt wird, entscheidet `scripts/classify_live_run.py` (neues Output
+  `wiederholen`); mit `--vorlauf` hängt der Grund des ersten Versuchs am
+  zweiten, damit auch ein grüner zweiter Versuch den Aussetzer nennt. Anlass:
+  4 von 35 geplanten Läufen vom 19.9. bis 23.10.2026 waren rot (#81, #91,
+  #93, #95), alle allein durch Transportfehler und alle am Folgetag von
+  selbst grün. Die zehn Minuten sind gesetzt, nicht gemessen.
 - **Roter Live-Lauf sagt, ob die Quelle überhaupt geantwortet hat.**
   `scripts/classify_live_run.py` zählt im Grund (und damit im automatisch
   eröffneten Issue) die Fehlschläge, die auf einen Transportfehler gehen

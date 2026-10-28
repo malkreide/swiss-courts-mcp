@@ -90,6 +90,40 @@ Datensatz weg war, sondern dass die Quelle die Schreibweise ihrer Kopfzeile
 gewechselt hatte — vier von sechs Datensätzen produktiv kaputt, alle
 Unit-Tests grün.
 
+**Ein Issue, das sich selbst schliesst, verschweigt, dass es wiederkommt.** Am
+23.10.2026 war die geplante Live-Suite rot: zwei `httpx.ReadTimeout` gegen
+entscheidsuche.ch. Die Einordnung sagte es wörtlich — «Die Quelle hat nicht
+geantwortet» —, am Folgetag war der Lauf grün, und das Issue #95 hatte sich
+selbst geschlossen. Einzeln betrachtet: erledigt. Erst die Liste der Issues mit
+Label `upstream` zeigte den vierten Fall in fünf Wochen:
+
+| Issue | Datum | Quelle | Fehler |
+|---|---|---|---|
+| #81 | 19.9. | Zenodo | `ReadTimeout` ×2 |
+| #91 | 2.10. | entscheidsuche.ch | `ConnectTimeout` ×2 |
+| #93 | 12.10. | Zenodo | `ReadTimeout` ×2 |
+| #95 | 23.10. | entscheidsuche.ch | `ReadTimeout` ×2 |
+
+4 von 35 geplanten Läufen, jedes Mal allein Transportfehler, jedes Mal am
+Folgetag von selbst grün. Das Muster stand in keinem der vier Issues; der
+Hinweis «das hatten wir schon mal» kam vom Menschen.
+
+- **Vor dem Einordnen die geschlossenen Issues desselben Labels zählen.** «Am
+  Folgetag grün» ist beim ersten Mal eine Entwarnung, beim vierten ein Befund —
+  über den Alarm, nicht über die Quelle.
+- **Bessere Diagnose ist nicht weniger Lärm.** `a82a081` (#92, 4.10.) schrieb
+  den Transportanteil in den Grund. Richtig, und danach kamen #93 und #95
+  trotzdem. Ein Alarm, der sich immer selbst erledigt, wird überlesen — auch an
+  dem Tag, an dem er einen geänderten Vertrag meldet.
+
+Die Abhilfe kam mit #96 (28.10.2026): Scheitert ein Lauf ausschliesslich an
+Transportfehlern, fährt `live.yml` ihn nach zehn Minuten ein zweites Mal, und
+erst dieser Versuch entscheidet über Issue und Jobfarbe. Ein gemischter Lauf
+geht sofort raus. **Die zehn Minuten sind gesetzt, nicht gemessen** — keiner der
+vier Läufe sagt, wie lange der Aussetzer dauerte, nur dass keiner einen Tag
+hielt. Steht künftig oft «im zweiten Versuch» im Issue, ist die Pause die
+Stellschraube.
+
 **Ein 4xx ist kein Nein.** Am 29.8.2026 antwortete `past-publications` in
 `swiss-procurement-mcp` auf jede Publikation mit Losen mit HTTP 400. Daraus war
 geschlossen worden, die Quelle verweigere diese Auskunft; der Befund stand
@@ -399,3 +433,7 @@ Beide Blöcke sind erzwungen: `check_gate_docs.py` hält sie gegen `ci.yml` und
 `live.yml`. Markiert wird mit `# gate` an der Befehlszeile dort; was markiert
 ist, macht die Doku rot, bis es hier steht. Das Übrige steht in README und
 CONTRIBUTING.
+
+Ein roter geplanter Lauf aus reinen Transportfehlern ist seit #96 schon der
+zweite Versuch; der Grund nennt dann beide. Warum, steht unter «Wenn etwas rot
+ist».

@@ -53,13 +53,35 @@ Zustand aendert das nichts: auch ein reiner Ausfall bleibt `finding`, macht
 den Job rot und oeffnet das Issue. Ein laengerer Ausfall soll nicht leiser
 werden, nur seine Diagnose soll im Issue stehen statt im Log.
 
+EIN ZWEITER VERSUCH, ABER NUR NACH EINEM REINEN AUSFALL
+-------------------------------------------------------
+Die Diagnose allein hat die Alarme nicht weniger gemacht. Vom 19.9. bis
+23.10.2026 waren 4 von 35 geplanten Laeufen rot (Issues #81, #91, #93, #95),
+alle vier ausschliesslich durch Transportfehler, alle vier am Folgetag von
+selbst gruen. Ein Issue, das sich jedes Mal selbst schliesst, liest beim
+fuenften Mal niemand mehr — auch nicht, wenn das fuenfte der geaenderte
+Vertrag ist.
+
+`wiederholen` sagt deshalb dem Workflow, ob er die Suite nach einer Pause ein
+zweites Mal fahren soll. Wahr ist es nur, wenn JEDER Fehlschlag und jeder
+Fehler ein Transportfehler ist. Ein gemischter Lauf wird nicht wiederholt:
+Sein inhaltlicher Rest ist genau das, wofuer es die Suite gibt, und er geht
+sofort raus. Faellt auch der zweite Versuch, wird er eingeordnet wie bisher —
+ein Ausfall, der die Pause ueberdauert, bleibt laut.
+
+Mit `--vorlauf` bekommt der Grund des zweiten Versuchs den des ersten
+angehaengt. Sonst saehe ein gruener zweiter Versuch aus wie ein gewoehnlicher
+gruener Lauf, und der Aussetzer davor waere nirgends mehr zu finden.
+
 Aufruf:
     python scripts/classify_live_run.py live-report.xml
     python scripts/classify_live_run.py live-report.xml --pytest-exit 1
+    python scripts/classify_live_run.py live-report.xml --vorlauf live-report-1.xml
 
-Gibt `state=...` und `reason=...` auf stdout aus und haengt beides an
-`$GITHUB_OUTPUT` an, wenn die Variable gesetzt ist. Der Exit-Code ist immer 0:
-Ueber rot oder gruen entscheidet der Workflow, nicht dieser Reporter.
+Gibt `state=...`, `reason=...` und `wiederholen=true|false` auf stdout aus und
+haengt alle drei an `$GITHUB_OUTPUT` an, wenn die Variable gesetzt ist. Der
+Exit-Code ist immer 0: Ueber rot oder gruen entscheidet der Workflow, nicht
+dieser Reporter.
 """
 
 from __future__ import annotations
@@ -96,10 +118,20 @@ def _ausnahmetyp(element: ET.Element) -> str:
     return treffer.group(1) if treffer else ""
 
 
-def _transport_anteil(suites: list[ET.Element]) -> str:
-    """Zusatz zum Grund: wie viele Fehlschlaege die Quelle gar nicht erreicht haben."""
+def _testsuites(root: ET.Element) -> list[ET.Element]:
+    return [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+
+
+def _befunde(suites: list[ET.Element]) -> tuple[list[ET.Element], Counter[str]]:
+    """Alle <failure>/<error> und, davon, die Transportfehler nach Art gezaehlt."""
     befunde = [el for s in suites for el in s.iter() if el.tag in ("failure", "error")]
     arten = Counter(t for t in map(_ausnahmetyp, befunde) if t in TRANSPORTFEHLER)
+    return befunde, arten
+
+
+def _transport_anteil(suites: list[ET.Element]) -> str:
+    """Zusatz zum Grund: wie viele Fehlschlaege die Quelle gar nicht erreicht haben."""
+    befunde, arten = _befunde(suites)
     n = sum(arten.values())
     if not n:
         return ""
@@ -129,7 +161,7 @@ def classify(report: Path, pytest_exit: int | None = None) -> tuple[str, str]:
     except (ET.ParseError, OSError) as exc:
         return UNKNOWN, f"{report} ist nicht lesbar: {exc}"
 
-    suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+    suites = _testsuites(root)
     if not suites:
         return UNKNOWN, f"{report} enthaelt keine testsuite"
 
@@ -164,15 +196,41 @@ def classify(report: Path, pytest_exit: int | None = None) -> tuple[str, str]:
     return CLEAR, f"{tests - skipped} von {tests} Test(s) ausgefuehrt, alle gruen"
 
 
+def wiederholen(report: Path) -> bool:
+    """Ist der Lauf ausschliesslich an Transportfehlern gescheitert?
+
+    Nur dann lohnt ein zweiter Versuch. Ein unlesbarer oder fehlender Report
+    ist `unknown` und kein Ausfall der Quelle — dort wird nichts wiederholt,
+    der Lauf ist ohnehin rot.
+    """
+    try:
+        suites = _testsuites(ET.parse(report).getroot())
+    except (ET.ParseError, OSError):
+        return False
+    befunde, arten = _befunde(suites)
+    return bool(befunde) and sum(arten.values()) == len(befunde)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="classify_live_run")
     ap.add_argument("report", type=Path, help="Pfad zum JUnit-XML von pytest")
     ap.add_argument("--pytest-exit", type=int, default=None)
+    ap.add_argument(
+        "--vorlauf",
+        type=Path,
+        default=None,
+        help="JUnit-XML des ersten Versuchs, wenn dieser Report der zweite ist",
+    )
     args = ap.parse_args(argv)
 
     state, reason = classify(args.report, args.pytest_exit)
+    if args.vorlauf is not None:
+        _, erster = classify(args.vorlauf)
+        reason = f"{reason} — im zweiten Versuch; der erste: {erster}"
+    nochmal = "true" if wiederholen(args.report) else "false"
     print(f"state={state}")
     print(f"reason={reason}")
+    print(f"wiederholen={nochmal}")
 
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
@@ -184,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
         with open(out, "a", encoding="utf-8") as fh:
             fh.write(f"state={state}\n")
             fh.write(f"reason={flat}\n")
+            fh.write(f"wiederholen={nochmal}\n")
     # Immer 0: Ueber rot oder gruen entscheidet der Workflow.
     return 0
 

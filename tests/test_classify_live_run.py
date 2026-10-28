@@ -215,6 +215,81 @@ class AufgezeichneteReportsTest(unittest.TestCase):
         self.assertEqual(vorhanden, gefahren)
 
 
+class WiederholenTest(unittest.TestCase):
+    """Ein zweiter Versuch nur, wenn die Quelle in KEINEM Test geantwortet hat.
+
+    Anlass: vom 19.9. bis 23.10.2026 vier rote Laeufe (#81, #91, #93, #95),
+    alle allein durch Transportfehler, alle am Folgetag von selbst gruen.
+    """
+
+    def test_reiner_ausfall_wird_wiederholt(self):
+        """Die Form vom 2.10.2026: die echte Live-Suite, die Quelle unerreichbar."""
+        self.assertTrue(clr.wiederholen(JUNIT / "nur_transport.xml"))
+
+    def test_gemischter_lauf_wird_nicht_wiederholt(self):
+        """Der inhaltliche Rest darf nicht zehn Minuten hinter drei Timeouts warten."""
+        self.assertFalse(clr.wiederholen(JUNIT / "gemischt.xml"))
+
+    def test_inhaltlicher_fehlschlag_wird_nicht_wiederholt(self):
+        for name in ("fehlschlag.xml", "fehler.xml"):
+            with self.subTest(name=name):
+                self.assertFalse(clr.wiederholen(JUNIT / name))
+
+    def test_gruen_und_unknown_werden_nicht_wiederholt(self):
+        for name in ("gruen.xml", "alle_uebersprungen.xml", "null_tests.xml"):
+            with self.subTest(name=name):
+                self.assertFalse(clr.wiederholen(JUNIT / name))
+
+    def test_fehlender_oder_kaputter_report_wird_nicht_wiederholt(self):
+        """`unknown` ist kein Ausfall der Quelle — der Lauf ist ohnehin rot."""
+        self.assertFalse(clr.wiederholen(Path("/nonexistent/live-report.xml")))
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(clr.wiederholen(write(Path(tmp), "<testsuite tests=")))
+
+
+class VorlaufTest(unittest.TestCase):
+    """Nach einer Wiederholung haengt der Grund des ersten Versuchs am zweiten."""
+
+    def _main(self, argv: list[str]) -> dict[str, str]:
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "gh-output"
+            out.write_text("", encoding="utf-8")
+            os.environ["GITHUB_OUTPUT"] = str(out)
+            try:
+                clr.main(argv)
+            finally:
+                del os.environ["GITHUB_OUTPUT"]
+            zeilen = out.read_text(encoding="utf-8").splitlines()
+        return dict(z.split("=", 1) for z in zeilen if z)
+
+    def test_gruener_zweiter_versuch_verschweigt_den_ersten_nicht(self):
+        """Sonst saehe er aus wie ein gewoehnlicher gruener Lauf."""
+        out = self._main([str(JUNIT / "gruen.xml"), "--vorlauf", str(JUNIT / "nur_transport.xml")])
+        self.assertEqual(out["state"], clr.CLEAR)
+        self.assertIn("im zweiten Versuch", out["reason"])
+        self.assertIn("httpx.ConnectTimeout x4", out["reason"])
+        self.assertEqual(out["wiederholen"], "false")
+
+    def test_roter_zweiter_versuch_bleibt_finding(self):
+        """Ein Ausfall, der die Pause ueberdauert, bleibt laut."""
+        out = self._main(
+            [str(JUNIT / "nur_transport.xml"), "--vorlauf", str(JUNIT / "nur_transport.xml")]
+        )
+        self.assertEqual(out["state"], clr.FINDING)
+        self.assertIn("im zweiten Versuch", out["reason"])
+
+    def test_ohne_vorlauf_kein_zweiter_versuch_im_grund(self):
+        out = self._main([str(JUNIT / "gruen.xml")])
+        self.assertNotIn("zweiten Versuch", out["reason"])
+
+    def test_wiederholen_steht_im_output(self):
+        """Der Workflow liest es; fehlt die Zeile, wird nie wiederholt."""
+        self.assertEqual(self._main([str(JUNIT / "nur_transport.xml")])["wiederholen"], "true")
+        self.assertEqual(self._main([str(JUNIT / "gemischt.xml")])["wiederholen"], "false")
+
+
 class GithubOutputTest(unittest.TestCase):
     """Der Workflow liest state und reason ueber $GITHUB_OUTPUT."""
 
@@ -258,7 +333,7 @@ class GithubOutputZeilenTest(unittest.TestCase):
                 del os.environ["GITHUB_OUTPUT"]
             zeilen = [z for z in out.read_text(encoding="utf-8").splitlines() if z]
         self.assertEqual([z for z in zeilen if z.startswith("state=")], ["state=unknown"])
-        self.assertEqual(len(zeilen), 2)
+        self.assertEqual(len(zeilen), 3)
 
 
 if __name__ == "__main__":

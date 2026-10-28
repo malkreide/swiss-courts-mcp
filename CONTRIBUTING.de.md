@@ -103,6 +103,8 @@ workflow*. Siehe [`.github/workflows/live.yml`](.github/workflows/live.yml).
 
 **Wer es sieht:** Ein roter Lauf öffnet ein Issue mit dem Label `upstream` und dem stabilen Titel «Live-Tests rot (<Datum>)» — ohne Quellennamen, weil die Suite auch die Ausweichquelle Zenodo prüft. Ein zweiter roter Lauf erkennt das offene Issue am Titelanfang (auch am früheren «Live-Tests gegen entscheidsuche.ch rot») und hängt sich an denselben Thread, statt ein zweites aufzumachen. Wird die Suite wieder grün, schliesst sich das Issue selbst.
 
+**Eine Wiederholung, nur nach einem reinen Ausfall.** Ist jeder Fehlschlag eines Laufs ein Transportfehler (`httpx.ConnectError`, `ConnectTimeout`, `ReadTimeout`), wartet der Workflow zehn Minuten und fährt die Suite ein zweites Mal; erst dieser zweite Versuch entscheidet über Issue und Jobfarbe, und sein Grund nennt den des ersten. Ein Lauf mit auch nur einem inhaltlichen Fehlschlag geht ohne Wiederholung sofort raus. Hintergrund: 4 von 35 geplanten Läufen vom 19.9. bis 23.10.2026 waren allein durch Transportfehler rot und am Folgetag von selbst grün. Die zehn Minuten sind gesetzt, nicht gemessen.
+
 **Drei Antworten, nicht zwei.** `scripts/classify_live_run.py` liest das JUnit-XML statt des
 Exit-Codes und unterscheidet: `clear` (gelaufen, grün), `finding` (gelaufen,
 etwas gefallen) und `unknown` (nicht gelaufen — Installation gescheitert, null
